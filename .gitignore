@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+ngrok.exe
+123.json
+.claude/

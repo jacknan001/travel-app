@@ -1,0 +1,1306 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>旅遊計畫</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    /* ── reset & base ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --purple1: #C0392B;
+      --purple2: #7B1818;
+      --grad: linear-gradient(135deg, #1B2860 0%, #C0392B 100%);
+      --bg: #FAF6F0;
+      --card: #FFFFFF;
+      --text: #1C0A0A;
+      --muted: #9E8070;
+      --border: #EAD5C0;
+      --radius: 14px;
+      --shadow: 0 2px 16px rgba(198,40,40,.10);
+      --nav-h: 62px;
+      --header-h: 112px;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif CJK TC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ── header ───────────────────────────────────────────────────────── */
+    #app-header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: var(--grad);
+      padding: 14px 16px 10px;
+      color: #fff;
+      overflow: hidden;
+    }
+    #app-header::before {
+      content: '🌸 　　　　🌸 　　　　🌸 　　　　🌸';
+      position: absolute; top: 2px; left: 0; right: 0;
+      font-size: 11px; letter-spacing: 6px;
+      opacity: .18; pointer-events: none; white-space: nowrap;
+    }
+    #app-header h1 { font-size: 20px; font-weight: 700; letter-spacing: 2px; }
+    #trip-selector {
+      margin-top: 8px;
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: none;
+      background: rgba(255,255,255,.22);
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23fff' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+    }
+    #trip-selector option { color: #333; background: #fff; }
+
+    /* ── main content ─────────────────────────────────────────────────── */
+    #main {
+      padding-top: var(--header-h);
+      padding-bottom: calc(var(--nav-h) + 16px);
+      min-height: 100%;
+    }
+
+    /* ── views ────────────────────────────────────────────────────────── */
+    .view { display: none; padding: 12px 14px; }
+    .view.active { display: block; }
+
+    /* ── day group ────────────────────────────────────────────────────── */
+    .day-group { margin-bottom: 18px; }
+    .day-label {
+      font-size: 12px; font-weight: 700;
+      color: var(--purple2); letter-spacing: 2px;
+      padding: 6px 4px 6px 10px;
+      border-left: 3px solid var(--purple1);
+      background: linear-gradient(90deg, rgba(192,57,43,.07), transparent);
+    }
+
+    /* ── itinerary card ───────────────────────────────────────────────── */
+    .item-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      box-shadow: var(--shadow);
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      cursor: pointer;
+      transition: transform .12s, box-shadow .12s;
+      -webkit-user-select: none; user-select: none;
+    }
+    .item-card:active { transform: scale(.98); box-shadow: none; }
+
+    .item-check {
+      flex-shrink: 0;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 2px;
+      transition: background .15s, border-color .15s;
+    }
+    .item-card.done .item-check {
+      background: var(--grad); border-color: transparent;
+    }
+    .item-check svg { display: none; }
+    .item-card.done .item-check svg { display: block; }
+
+    .item-body { flex: 1; min-width: 0; }
+    .item-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .item-time { font-size: 12px; color: var(--purple1); font-weight: 600; white-space: nowrap; }
+    .item-type-badge {
+      font-size: 11px; padding: 1px 7px; border-radius: 20px;
+      background: rgba(102,126,234,.1); color: var(--purple2); white-space: nowrap;
+    }
+    .item-name {
+      font-size: 15px; font-weight: 600; margin-top: 3px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .item-card.done .item-name { text-decoration: line-through; color: var(--muted); }
+    .item-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .item-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 5px; }
+    .item-cost { font-size: 12px; color: var(--purple2); font-weight: 600; }
+    .maps-link {
+      font-size: 11px; color: var(--purple1); text-decoration: none;
+      padding: 3px 8px; border: 1px solid var(--purple1); border-radius: 20px;
+      white-space: nowrap;
+    }
+
+    /* ── empty state ──────────────────────────────────────────────────── */
+    .empty {
+      text-align: center; padding: 60px 20px; color: var(--muted);
+    }
+    .empty .emoji { font-size: 48px; margin-bottom: 12px; }
+    .empty p { font-size: 14px; }
+
+    /* ── expenses ─────────────────────────────────────────────────────── */
+    .expense-summary {
+      background: var(--grad);
+      border-radius: var(--radius);
+      padding: 18px 16px;
+      color: #fff;
+      margin-bottom: 14px;
+    }
+    .expense-summary h2 { font-size: 13px; opacity: .85; font-weight: 500; }
+    .expense-total-jpy { font-size: 32px; font-weight: 800; margin: 4px 0 2px; }
+    .expense-total-twd { font-size: 13px; opacity: .8; }
+
+    .category-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .cat-chip {
+      padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+      background: var(--card); color: var(--purple2); box-shadow: var(--shadow);
+    }
+    .cat-chip span { color: var(--muted); font-weight: 400; }
+
+    .section-title { font-size: 12px; font-weight: 700; color: var(--purple1); letter-spacing: .6px; text-transform: uppercase; margin-bottom: 8px; padding-left: 4px; }
+
+    .expense-card {
+      background: var(--card); border-radius: var(--radius);
+      padding: 12px 14px; margin-bottom: 8px; box-shadow: var(--shadow);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .expense-card-left .exp-name { font-size: 14px; font-weight: 600; }
+    .expense-card-left .exp-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .expense-card-right { text-align: right; }
+    .exp-jpy { font-size: 16px; font-weight: 700; color: var(--purple2); }
+    .exp-twd { font-size: 11px; color: var(--muted); }
+
+    /* ── trips view ───────────────────────────────────────────────────── */
+    .trip-card {
+      background: var(--card); border-radius: var(--radius);
+      padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow);
+    }
+    .trip-card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .trip-name { font-size: 17px; font-weight: 700; }
+    .trip-badge {
+      font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 600;
+    }
+    .badge-計畫中 { background: #FFF0F0; color: #C0392B; border: 1px solid #EFC8C8; }
+    .badge-確認   { background: #FFF8E7; color: #92660A; border: 1px solid #E8D5A0; }
+    .badge-完成   { background: #EFF6F0; color: #1B6B38; border: 1px solid #B8DFC4; }
+    .trip-dates { font-size: 13px; color: var(--muted); margin-top: 6px; }
+    .trip-info { display: flex; gap: 16px; margin-top: 10px; }
+    .trip-info-item { font-size: 12px; color: var(--muted); }
+    .trip-info-item strong { display: block; font-size: 14px; color: var(--text); font-weight: 600; }
+
+    /* ── FAB ──────────────────────────────────────────────────────────── */
+    #fab {
+      position: fixed;
+      right: 20px;
+      bottom: calc(var(--nav-h) + 14px);
+      width: 54px; height: 54px;
+      border-radius: 50%;
+      background: var(--grad);
+      color: #fff;
+      font-size: 28px;
+      line-height: 54px;
+      text-align: center;
+      box-shadow: 0 4px 16px rgba(118,75,162,.45);
+      cursor: pointer;
+      z-index: 200;
+      transition: transform .15s;
+    }
+    #fab:active { transform: scale(.9); }
+
+    /* ── bottom nav ───────────────────────────────────────────────────── */
+    #bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+      height: var(--nav-h);
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      display: flex;
+    }
+    .nav-btn {
+      flex: 1;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; cursor: pointer; color: var(--muted);
+      font-size: 11px; font-weight: 500;
+      transition: color .15s;
+      border: none; background: none; padding: 0;
+    }
+    .nav-btn .nav-icon { font-size: 22px; line-height: 1; }
+    .nav-btn.active { color: var(--purple1); }
+
+    /* ── modal overlay ────────────────────────────────────────────────── */
+    #modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.45);
+      z-index: 300; display: none; align-items: flex-end;
+    }
+    #modal-overlay.open { display: flex; }
+
+    #modal {
+      background: var(--card);
+      border-radius: 22px 22px 0 0;
+      width: 100%;
+      max-height: 92vh;
+      overflow-y: auto;
+      padding: 0 0 34px;
+      transform: translateY(100%);
+      transition: transform .3s cubic-bezier(.32,.72,0,1);
+    }
+    #modal-overlay.open #modal { transform: translateY(0); }
+
+    .modal-handle {
+      width: 40px; height: 4px; background: var(--border);
+      border-radius: 2px; margin: 12px auto 4px;
+    }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 18px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-title { font-size: 17px; font-weight: 700; }
+    .modal-close {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: var(--bg); border: none; cursor: pointer;
+      font-size: 18px; display: flex; align-items: center; justify-content: center;
+    }
+
+    .modal-body { padding: 16px 18px; }
+
+    .form-group { margin-bottom: 14px; }
+    .form-label {
+      display: block; font-size: 12px; font-weight: 600;
+      color: var(--purple2); margin-bottom: 5px;
+    }
+    .form-input, .form-select, .form-textarea {
+      width: 100%; padding: 10px 12px;
+      border: 1.5px solid var(--border); border-radius: 10px;
+      font-size: 14px; color: var(--text);
+      background: #FFFAF7; outline: none;
+      transition: border-color .15s;
+      font-family: inherit;
+    }
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      border-color: var(--purple1);
+      box-shadow: 0 0 0 3px rgba(192,57,43,.08);
+    }
+    .form-textarea { resize: vertical; min-height: 72px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .btn-row { display: flex; gap: 10px; margin-top: 18px; }
+    .btn {
+      flex: 1; padding: 13px; border-radius: 12px; border: none;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:active { transform: scale(.97); opacity: .85; }
+    .btn-primary { background: var(--grad); color: #fff; }
+    .btn-danger { background: #fee2e2; color: #b91c1c; }
+    .btn-secondary { background: var(--bg); color: var(--muted); }
+
+    /* ── trip modal ───────────────────────────────────────────────────── */
+    #trip-modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.45);
+      z-index: 300; display: none; align-items: flex-end;
+    }
+    #trip-modal-overlay.open { display: flex; }
+    #trip-modal {
+      background: var(--card);
+      border-radius: 22px 22px 0 0;
+      width: 100%;
+      max-height: 85vh;
+      overflow-y: auto;
+      padding: 0 0 34px;
+      transform: translateY(100%);
+      transition: transform .3s cubic-bezier(.32,.72,0,1);
+    }
+    #trip-modal-overlay.open #trip-modal { transform: translateY(0); }
+
+    /* ── expense modal ────────────────────────────────────────────────── */
+    #expense-modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.45);
+      z-index: 300; display: none; align-items: flex-end;
+    }
+    #expense-modal-overlay.open { display: flex; }
+    #expense-modal {
+      background: var(--card);
+      border-radius: 22px 22px 0 0;
+      width: 100%;
+      max-height: 85vh;
+      overflow-y: auto;
+      padding: 0 0 34px;
+      transform: translateY(100%);
+      transition: transform .3s cubic-bezier(.32,.72,0,1);
+    }
+    #expense-modal-overlay.open #expense-modal { transform: translateY(0); }
+
+    /* ── loading spinner ──────────────────────────────────────────────── */
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--purple1);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin: 40px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── toast ────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: calc(var(--nav-h) + 70px); left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: #333; color: #fff; font-size: 13px;
+      padding: 9px 18px; border-radius: 22px;
+      opacity: 0; pointer-events: none;
+      transition: opacity .2s, transform .2s;
+      z-index: 999; white-space: nowrap;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── map view ─────────────────────────────────────────────────────── */
+    #view-map { padding: 0 !important; }
+    #map-container {
+      height: calc(100vh - var(--header-h) - var(--nav-h));
+      width: 100%;
+      position: relative;
+    }
+    #leaflet-map { height: 100%; width: 100%; }
+    .map-legend {
+      position: absolute; bottom: 16px; left: 12px; z-index: 999;
+      background: rgba(255,255,255,.92); border-radius: 10px;
+      padding: 8px 12px; font-size: 11px; box-shadow: var(--shadow);
+      max-width: 180px;
+    }
+    .legend-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .map-loading {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 100%; color: var(--muted); gap: 12px;
+      font-size: 13px;
+    }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(192,57,43,.25); border-radius: 2px; }
+
+    /* 和紙 washi texture overlay */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Ccircle cx='30' cy='30' r='1' fill='%23C0392B' opacity='.04'/%3E%3Ccircle cx='10' cy='10' r='.8' fill='%23C0392B' opacity='.03'/%3E%3Ccircle cx='50' cy='10' r='.8' fill='%23C0392B' opacity='.03'/%3E%3C/svg%3E");
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ───────────────────────────────────────────────────────────── -->
+<header id="app-header">
+  <h1>⛩️ 旅遊計畫</h1>
+  <select id="trip-selector">
+    <option value="">— 載入旅程中 —</option>
+  </select>
+</header>
+
+<!-- ── MAIN ─────────────────────────────────────────────────────────────── -->
+<main id="main">
+
+  <!-- ITINERARY VIEW -->
+  <section id="view-itinerary" class="view active">
+    <div id="itinerary-content"><div class="spinner"></div></div>
+  </section>
+
+  <!-- EXPENSES VIEW -->
+  <section id="view-expenses" class="view">
+    <div id="expenses-content"><div class="spinner"></div></div>
+  </section>
+
+  <!-- MAP VIEW -->
+  <section id="view-map" class="view">
+    <div id="map-container">
+      <div class="map-loading"><div class="spinner"></div><span>載入地圖中...</span></div>
+    </div>
+  </section>
+
+  <!-- TRIPS VIEW -->
+  <section id="view-trips" class="view">
+    <div id="trips-content"><div class="spinner"></div></div>
+  </section>
+
+</main>
+
+<!-- ── FAB ──────────────────────────────────────────────────────────────── -->
+<div id="fab">＋</div>
+
+<!-- ── BOTTOM NAV ───────────────────────────────────────────────────────── -->
+<nav id="bottom-nav">
+  <button class="nav-btn active" data-view="itinerary">
+    <span class="nav-icon">🗺️</span>行程
+  </button>
+  <button class="nav-btn" data-view="expenses">
+    <span class="nav-icon">💴</span>費用
+  </button>
+  <button class="nav-btn" data-view="map">
+    <span class="nav-icon">🗾</span>地圖
+  </button>
+  <button class="nav-btn" data-view="trips">
+    <span class="nav-icon">🧳</span>旅程
+  </button>
+</nav>
+
+<!-- ── ITINERARY MODAL ──────────────────────────────────────────────────── -->
+<div id="modal-overlay">
+  <div id="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">新增行程</span>
+      <button class="modal-close" id="modal-close-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-item-id" />
+      <div class="form-group">
+        <label class="form-label">景點名稱 *</label>
+        <input class="form-input" id="f-name" type="text" placeholder="例：淺草寺" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">日期</label>
+          <input class="form-input" id="f-date" type="date" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">時間</label>
+          <input class="form-input" id="f-time" type="text" placeholder="09:00" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">類型</label>
+        <select class="form-select" id="f-type">
+          <option value="">— 選擇 —</option>
+          <option>🏛️ 景點</option>
+          <option>🍽️ 餐廳</option>
+          <option>🚉 交通</option>
+          <option>🏨 住宿</option>
+          <option>🛍️ 購物</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">地址</label>
+        <input class="form-input" id="f-address" type="text" placeholder="地址" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Google Maps 連結</label>
+        <input class="form-input" id="f-maps" type="url" placeholder="https://maps.google.com/..." />
+      </div>
+      <div class="form-group">
+        <label class="form-label">預估費用（JPY）</label>
+        <input class="form-input" id="f-cost" type="number" placeholder="0" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">備註</label>
+        <textarea class="form-textarea" id="f-notes" placeholder="備註..."></textarea>
+      </div>
+      <div class="form-group" id="f-done-row" style="display:none;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
+          <input type="checkbox" id="f-done" style="width:18px;height:18px;accent-color:var(--purple1);" />
+          已完成
+        </label>
+      </div>
+      <div class="btn-row" id="modal-btn-row">
+        <button class="btn btn-primary" id="modal-save-btn">儲存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── TRIP MODAL ───────────────────────────────────────────────────────── -->
+<div id="trip-modal-overlay">
+  <div id="trip-modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">新增旅程</span>
+      <button class="modal-close" id="trip-modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">旅程名稱 *</label>
+        <input class="form-input" id="t-name" type="text" placeholder="例：2025 東京之旅" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">出發日期</label>
+          <input class="form-input" id="t-start" type="date" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">回程日期</label>
+          <input class="form-input" id="t-end" type="date" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">人數</label>
+          <input class="form-input" id="t-people" type="number" placeholder="2" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">總預算（TWD）</label>
+          <input class="form-input" id="t-budget" type="number" placeholder="50000" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">狀態</label>
+        <select class="form-select" id="t-status">
+          <option value="計畫中">計畫中</option>
+          <option value="確認">確認</option>
+          <option value="完成">完成</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="trip-save-btn">建立旅程</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── EXPENSE MODAL ────────────────────────────────────────────────────── -->
+<div id="expense-modal-overlay">
+  <div id="expense-modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">新增費用</span>
+      <button class="modal-close" id="expense-modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="e-id" />
+      <div class="form-group">
+        <label class="form-label">項目名稱 *</label>
+        <input class="form-input" id="e-name" type="text" placeholder="例：晚餐" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">金額（JPY）</label>
+          <input class="form-input" id="e-amount" type="number" placeholder="0" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">日期</label>
+          <input class="form-input" id="e-date" type="date" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">類別</label>
+          <select class="form-select" id="e-category">
+            <option value="">— 選擇 —</option>
+            <option>🍽️ 餐飲</option>
+            <option>🚌 交通</option>
+            <option>🏨 住宿</option>
+            <option>🎡 娛樂</option>
+            <option>🛍️ 購物</option>
+            <option>💊 醫療</option>
+            <option>📦 其他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">付款人</label>
+          <input class="form-input" id="e-payer" type="text" placeholder="姓名" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">備註</label>
+        <textarea class="form-textarea" id="e-notes" placeholder="備註..." style="min-height:56px;"></textarea>
+      </div>
+      <div class="btn-row" id="expense-btn-row">
+        <button class="btn btn-primary" id="expense-save-btn">儲存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOAST ─────────────────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+  const API = 'http://localhost:5000/api';
+  const TWD_RATE = 0.21;
+
+  /* ── state ─────────────────────────────────────────────────────────── */
+  let trips = [];
+  let currentTripId = null;
+  let currentView = 'itinerary';
+  let itineraryData = [];
+  let expensesData = [];
+
+  /* ── utils ─────────────────────────────────────────────────────────── */
+  function toast(msg, duration = 2000) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), duration);
+  }
+
+  function fmtJPY(n) {
+    if (!n && n !== 0) return '';
+    return '¥' + Number(n).toLocaleString();
+  }
+  function fmtTWD(n) {
+    if (!n && n !== 0) return '';
+    return 'NT$' + Math.round(n * TWD_RATE).toLocaleString();
+  }
+
+  function fmtDate(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    const weekdays = ['日','一','二','三','四','五','六'];
+    return `${d.getMonth()+1}/${d.getDate()} (${weekdays[d.getDay()]})`;
+  }
+
+  function groupByDate(items) {
+    const map = {};
+    items.forEach(item => {
+      const key = item.date || '（未設定日期）';
+      if (!map[key]) map[key] = [];
+      map[key].push(item);
+    });
+    return map;
+  }
+
+  /* ── API calls ──────────────────────────────────────────────────────── */
+  async function apiFetch(path, opts = {}) {
+    const res = await fetch(API + path, {
+      headers: { 'Content-Type': 'application/json' },
+      ...opts,
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || res.statusText);
+    }
+    return res.json();
+  }
+
+  /* ── TRIPS ──────────────────────────────────────────────────────────── */
+  async function loadTrips() {
+    try {
+      trips = await apiFetch('/trips');
+      renderTripSelector();
+      renderTripsView();
+    } catch (e) {
+      toast('載入旅程失敗：' + e.message);
+    }
+  }
+
+  function renderTripSelector() {
+    const sel = document.getElementById('trip-selector');
+    sel.innerHTML = trips.length
+      ? trips.map(t => `<option value="${t.id}">${t.name}${t.start_date ? ' · '+t.start_date.slice(0,7) : ''}</option>`).join('')
+      : '<option value="">（無旅程）</option>';
+
+    if (trips.length) {
+      if (!currentTripId || !trips.find(t => t.id === currentTripId)) {
+        currentTripId = trips[0].id;
+      }
+      sel.value = currentTripId;
+    }
+  }
+
+  function renderTripsView() {
+    const el = document.getElementById('trips-content');
+    const addBtnHTML = `<button class="btn btn-primary" style="width:100%;margin-bottom:14px;" onclick="openTripModal()">＋ 新增旅程</button>`;
+    if (!trips.length) {
+      el.innerHTML = addBtnHTML + `<div class="empty"><div class="emoji">🧳</div><p>還沒有旅程，點上方按鈕新增！</p></div>`;
+      return;
+    }
+    el.innerHTML = addBtnHTML + trips.map(t => `
+      <div class="trip-card">
+        <div class="trip-card-header">
+          <div class="trip-name">${t.name}</div>
+          ${t.status ? `<span class="trip-badge badge-${t.status}">${t.status}</span>` : ''}
+        </div>
+        ${t.start_date ? `<div class="trip-dates">📅 ${t.start_date} → ${t.end_date || '?'}</div>` : ''}
+        <div class="trip-info">
+          ${t.people != null ? `<div class="trip-info-item"><strong>${t.people}</strong>人</div>` : ''}
+          ${t.budget_twd != null ? `<div class="trip-info-item"><strong>NT$${Number(t.budget_twd).toLocaleString()}</strong>預算</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  /* ── ITINERARY ──────────────────────────────────────────────────────── */
+  async function loadItinerary() {
+    if (!currentTripId) {
+      document.getElementById('itinerary-content').innerHTML =
+        `<div class="empty"><div class="emoji">✈️</div><p>請先選擇旅程</p></div>`;
+      return;
+    }
+    document.getElementById('itinerary-content').innerHTML = '<div class="spinner"></div>';
+    try {
+      itineraryData = await apiFetch(`/itinerary/${currentTripId}`);
+      renderItinerary();
+    } catch (e) {
+      document.getElementById('itinerary-content').innerHTML =
+        `<div class="empty"><p>載入失敗：${e.message}</p></div>`;
+    }
+  }
+
+  function renderItinerary() {
+    const el = document.getElementById('itinerary-content');
+    if (!itineraryData.length) {
+      el.innerHTML = `<div class="empty"><div class="emoji">🗺️</div><p>還沒有行程，點 ＋ 新增！</p></div>`;
+      return;
+    }
+    const groups = groupByDate(itineraryData);
+    el.innerHTML = Object.entries(groups).map(([date, items]) => `
+      <div class="day-group">
+        <div class="day-label">${date === '（未設定日期）' ? date : fmtDate(date) + ' — ' + date}</div>
+        ${items.map(item => renderItemCard(item)).join('')}
+      </div>
+    `).join('');
+
+    // attach events
+    el.querySelectorAll('.item-card').forEach(card => {
+      const id = card.dataset.id;
+      card.querySelector('.item-check').addEventListener('click', e => {
+        e.stopPropagation();
+        toggleDone(id);
+      });
+      card.addEventListener('click', () => openEditModal(id));
+    });
+    el.querySelectorAll('.maps-link').forEach(a => {
+      a.addEventListener('click', e => e.stopPropagation());
+    });
+  }
+
+  function renderItemCard(item) {
+    const typeIcon = item.type ? item.type.split(' ')[0] : '📍';
+    const doneClass = item.done ? 'done' : '';
+    return `
+      <div class="item-card ${doneClass}" data-id="${item.id}">
+        <div class="item-check">
+          <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
+            <path d="M1 4L4 7.5L10 1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="item-body">
+          <div class="item-top">
+            ${item.time ? `<span class="item-time">${item.time}</span>` : ''}
+            ${item.type ? `<span class="item-type-badge">${item.type}</span>` : ''}
+          </div>
+          <div class="item-name">${item.name || '（未命名）'}</div>
+          ${item.notes ? `<div class="item-meta">${item.notes}</div>` : ''}
+          <div class="item-footer">
+            <span class="item-cost">${item.cost_jpy != null ? fmtJPY(item.cost_jpy) + ' · ' + fmtTWD(item.cost_jpy) : ''}</span>
+            ${item.maps_url ? `<a class="maps-link" href="${item.maps_url}" target="_blank">📍 地圖</a>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function toggleDone(id) {
+    const item = itineraryData.find(i => i.id === id);
+    if (!item) return;
+    const newDone = !item.done;
+    item.done = newDone;
+    renderItinerary();
+    try {
+      await apiFetch(`/itinerary/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ done: newDone }),
+      });
+    } catch (e) {
+      item.done = !newDone;
+      renderItinerary();
+      toast('更新失敗');
+    }
+  }
+
+  /* ── EXPENSES ───────────────────────────────────────────────────────── */
+  async function loadExpenses() {
+    if (!currentTripId) {
+      document.getElementById('expenses-content').innerHTML =
+        `<div class="empty"><div class="emoji">💴</div><p>請先選擇旅程</p></div>`;
+      return;
+    }
+    document.getElementById('expenses-content').innerHTML = '<div class="spinner"></div>';
+    try {
+      expensesData = await apiFetch(`/expenses/${currentTripId}`);
+      renderExpenses();
+    } catch (e) {
+      document.getElementById('expenses-content').innerHTML =
+        `<div class="empty"><p>載入失敗：${e.message}</p></div>`;
+    }
+  }
+
+  function renderExpenses() {
+    const el = document.getElementById('expenses-content');
+    const total = expensesData.reduce((s, e) => s + (e.amount_jpy || 0), 0);
+
+    // category totals
+    const catMap = {};
+    expensesData.forEach(e => {
+      const cat = e.category || '其他';
+      catMap[cat] = (catMap[cat] || 0) + (e.amount_jpy || 0);
+    });
+
+    const summaryHTML = `
+      <div class="expense-summary">
+        <h2>總支出</h2>
+        <div class="expense-total-jpy">${fmtJPY(total)}</div>
+        <div class="expense-total-twd">≈ ${fmtTWD(total)} (匯率 0.21)</div>
+      </div>
+      <div class="category-chips">
+        ${Object.entries(catMap).map(([cat, amt]) =>
+          `<div class="cat-chip">${cat} <span>${fmtJPY(amt)}</span></div>`
+        ).join('')}
+      </div>
+    `;
+
+    if (!expensesData.length) {
+      el.innerHTML = summaryHTML + `<div class="empty"><div class="emoji">💰</div><p>還沒有費用記錄</p></div>`;
+      return;
+    }
+
+    const listHTML = `
+      <div class="section-title">明細</div>
+      ${expensesData.map(exp => `
+        <div class="expense-card" data-id="${exp.id}" style="cursor:pointer;">
+          <div class="expense-card-left">
+            <div class="exp-name">${exp.name}</div>
+            <div class="exp-meta">${exp.category || ''} ${exp.date ? '· ' + exp.date : ''} ${exp.payer ? '· ' + exp.payer : ''}</div>
+          </div>
+          <div class="expense-card-right">
+            <div class="exp-jpy">${fmtJPY(exp.amount_jpy)}</div>
+            <div class="exp-twd">${fmtTWD(exp.amount_jpy)}</div>
+          </div>
+        </div>
+      `).join('')}
+    `;
+
+    el.innerHTML = summaryHTML + listHTML;
+
+    el.querySelectorAll('.expense-card[data-id]').forEach(card => {
+      card.addEventListener('click', () => openEditExpenseModal(card.dataset.id));
+    });
+  }
+
+  /* ── MODALS ─────────────────────────────────────────────────────────── */
+
+  // Itinerary modal
+  function openAddModal() {
+    document.getElementById('edit-item-id').value = '';
+    document.getElementById('modal-title').textContent = '新增行程';
+    document.getElementById('f-name').value = '';
+    document.getElementById('f-date').value = '';
+    document.getElementById('f-time').value = '';
+    document.getElementById('f-type').value = '';
+    document.getElementById('f-address').value = '';
+    document.getElementById('f-maps').value = '';
+    document.getElementById('f-cost').value = '';
+    document.getElementById('f-notes').value = '';
+    document.getElementById('f-done').checked = false;
+    document.getElementById('f-done-row').style.display = 'none';
+
+    const btnRow = document.getElementById('modal-btn-row');
+    btnRow.innerHTML = '<button class="btn btn-primary" id="modal-save-btn">儲存</button>';
+    document.getElementById('modal-save-btn').onclick = saveItineraryItem;
+
+    document.getElementById('modal-overlay').classList.add('open');
+  }
+
+  function openEditModal(id) {
+    const item = itineraryData.find(i => i.id === id);
+    if (!item) return;
+
+    document.getElementById('edit-item-id').value = id;
+    document.getElementById('modal-title').textContent = '編輯行程';
+    document.getElementById('f-name').value = item.name || '';
+    document.getElementById('f-date').value = item.date || '';
+    document.getElementById('f-time').value = item.time || '';
+    document.getElementById('f-type').value = item.type || '';
+    document.getElementById('f-address').value = item.address || '';
+    document.getElementById('f-maps').value = item.maps_url || '';
+    document.getElementById('f-cost').value = item.cost_jpy != null ? item.cost_jpy : '';
+    document.getElementById('f-notes').value = item.notes || '';
+    document.getElementById('f-done').checked = !!item.done;
+    document.getElementById('f-done-row').style.display = 'block';
+
+    const btnRow = document.getElementById('modal-btn-row');
+    btnRow.innerHTML = `
+      <button class="btn btn-danger" id="modal-delete-btn">刪除</button>
+      <button class="btn btn-primary" id="modal-save-btn">儲存</button>
+    `;
+    document.getElementById('modal-save-btn').onclick = saveItineraryItem;
+    document.getElementById('modal-delete-btn').onclick = () => deleteItineraryItem(id);
+
+    document.getElementById('modal-overlay').classList.add('open');
+  }
+
+  function closeModal() {
+    document.getElementById('modal-overlay').classList.remove('open');
+  }
+
+  async function saveItineraryItem() {
+    const id = document.getElementById('edit-item-id').value;
+    const name = document.getElementById('f-name').value.trim();
+    if (!name) { toast('請輸入景點名稱'); return; }
+    if (!currentTripId) { toast('請先選擇旅程'); return; }
+
+    const payload = {
+      name,
+      trip_id: currentTripId,
+      date: document.getElementById('f-date').value || null,
+      time: document.getElementById('f-time').value.trim(),
+      type: document.getElementById('f-type').value || null,
+      address: document.getElementById('f-address').value.trim(),
+      maps_url: document.getElementById('f-maps').value.trim() || null,
+      cost_jpy: document.getElementById('f-cost').value !== '' ? Number(document.getElementById('f-cost').value) : null,
+      notes: document.getElementById('f-notes').value.trim(),
+      done: document.getElementById('f-done').checked,
+    };
+
+    try {
+      if (id) {
+        await apiFetch(`/itinerary/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        toast('已更新！');
+      } else {
+        await apiFetch('/itinerary', { method: 'POST', body: JSON.stringify(payload) });
+        toast('已新增！');
+      }
+      closeModal();
+      await loadItinerary();
+    } catch (e) {
+      toast('儲存失敗：' + e.message);
+    }
+  }
+
+  async function deleteItineraryItem(id) {
+    if (!confirm('確定要刪除這個行程項目嗎？')) return;
+    try {
+      await apiFetch(`/itinerary/${id}`, { method: 'DELETE' });
+      toast('已刪除');
+      closeModal();
+      await loadItinerary();
+    } catch (e) {
+      toast('刪除失敗：' + e.message);
+    }
+  }
+
+  // Trip modal
+  function openTripModal() {
+    document.getElementById('t-name').value = '';
+    document.getElementById('t-start').value = '';
+    document.getElementById('t-end').value = '';
+    document.getElementById('t-people').value = '';
+    document.getElementById('t-budget').value = '';
+    document.getElementById('t-status').value = '計畫中';
+    document.getElementById('trip-modal-overlay').classList.add('open');
+  }
+  function closeTripModal() {
+    document.getElementById('trip-modal-overlay').classList.remove('open');
+  }
+  async function saveTrip() {
+    const name = document.getElementById('t-name').value.trim();
+    if (!name) { toast('請輸入旅程名稱'); return; }
+    const payload = {
+      name,
+      start_date: document.getElementById('t-start').value || null,
+      end_date: document.getElementById('t-end').value || null,
+      people: document.getElementById('t-people').value !== '' ? Number(document.getElementById('t-people').value) : null,
+      budget_twd: document.getElementById('t-budget').value !== '' ? Number(document.getElementById('t-budget').value) : null,
+      status: document.getElementById('t-status').value,
+    };
+    try {
+      const newTrip = await apiFetch('/trips', { method: 'POST', body: JSON.stringify(payload) });
+      toast('旅程已建立！');
+      closeTripModal();
+      currentTripId = newTrip.id;
+      await loadTrips();
+    } catch (e) {
+      toast('建立失敗：' + e.message);
+    }
+  }
+
+  // Expense modal
+  function openExpenseModal() {
+    document.getElementById('e-id').value = '';
+    document.querySelector('#expense-modal .modal-title').textContent = '新增費用';
+    document.getElementById('e-name').value = '';
+    document.getElementById('e-amount').value = '';
+    document.getElementById('e-date').value = '';
+    document.getElementById('e-category').value = '';
+    document.getElementById('e-payer').value = '';
+    document.getElementById('e-notes').value = '';
+    const btnRow = document.getElementById('expense-btn-row');
+    btnRow.innerHTML = '<button class="btn btn-primary" id="expense-save-btn">儲存</button>';
+    document.getElementById('expense-save-btn').addEventListener('click', saveExpense);
+    document.getElementById('expense-modal-overlay').classList.add('open');
+  }
+
+  function openEditExpenseModal(id) {
+    const exp = expensesData.find(e => e.id === id);
+    if (!exp) return;
+    document.getElementById('e-id').value = id;
+    document.querySelector('#expense-modal .modal-title').textContent = '編輯費用';
+    document.getElementById('e-name').value = exp.name || '';
+    document.getElementById('e-amount').value = exp.amount_jpy != null ? exp.amount_jpy : '';
+    document.getElementById('e-date').value = exp.date || '';
+    document.getElementById('e-category').value = exp.category || '';
+    document.getElementById('e-payer').value = exp.payer || '';
+    document.getElementById('e-notes').value = exp.notes || '';
+    const btnRow = document.getElementById('expense-btn-row');
+    btnRow.innerHTML = `
+      <button class="btn btn-danger" id="expense-delete-btn">刪除</button>
+      <button class="btn btn-primary" id="expense-save-btn">儲存</button>
+    `;
+    document.getElementById('expense-save-btn').addEventListener('click', saveExpense);
+    document.getElementById('expense-delete-btn').addEventListener('click', () => deleteExpense(id));
+    document.getElementById('expense-modal-overlay').classList.add('open');
+  }
+
+  function closeExpenseModal() {
+    document.getElementById('expense-modal-overlay').classList.remove('open');
+  }
+
+  async function saveExpense() {
+    const id = document.getElementById('e-id').value;
+    const name = document.getElementById('e-name').value.trim();
+    if (!name) { toast('請輸入項目名稱'); return; }
+    if (!currentTripId) { toast('請先選擇旅程'); return; }
+    const payload = {
+      name,
+      trip_id: currentTripId,
+      amount_jpy: document.getElementById('e-amount').value !== '' ? Number(document.getElementById('e-amount').value) : null,
+      date: document.getElementById('e-date').value || null,
+      category: document.getElementById('e-category').value || null,
+      payer: document.getElementById('e-payer').value.trim(),
+      notes: document.getElementById('e-notes').value.trim(),
+    };
+    try {
+      if (id) {
+        await apiFetch(`/expenses/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        toast('費用已更新！');
+      } else {
+        await apiFetch('/expenses', { method: 'POST', body: JSON.stringify(payload) });
+        toast('費用已新增！');
+      }
+      closeExpenseModal();
+      await loadExpenses();
+    } catch (e) {
+      toast('儲存失敗：' + e.message);
+    }
+  }
+
+  async function deleteExpense(id) {
+    if (!confirm('確定要刪除這筆費用嗎？')) return;
+    try {
+      await apiFetch(`/expenses/${id}`, { method: 'DELETE' });
+      toast('已刪除');
+      closeExpenseModal();
+      await loadExpenses();
+    } catch (e) {
+      toast('刪除失敗：' + e.message);
+    }
+  }
+
+  /* ── MAP ────────────────────────────────────────────────────────────── */
+  let mapInstance = null;
+  let geocodeCache = {};
+  const DAY_COLORS = ['#C0392B','#1565C0','#2E7D32','#6A1B9A','#E65100','#00695C','#AD1457'];
+
+  function extractCoordsFromUrl(url) {
+    if (!url) return null;
+    const m = url.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    return m ? [parseFloat(m[1]), parseFloat(m[2])] : null;
+  }
+
+  async function geocodePlace(query) {
+    if (geocodeCache[query]) return geocodeCache[query];
+    try {
+      await new Promise(r => setTimeout(r, 350));
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+        { headers: { 'Accept-Language': 'ja,zh-TW,zh' } }
+      );
+      const data = await res.json();
+      if (data.length) {
+        const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+        geocodeCache[query] = coords;
+        return coords;
+      }
+    } catch(e) {}
+    return null;
+  }
+
+  async function loadMapView() {
+    const container = document.getElementById('map-container');
+
+    if (!currentTripId) {
+      container.innerHTML = '<div class="map-loading"><div class="emoji">🗾</div><span>請先選擇旅程</span></div>';
+      return;
+    }
+
+    container.innerHTML = '<div class="map-loading"><div class="spinner"></div><span>正在定位景點...</span></div>';
+
+    try {
+      if (!itineraryData.length) {
+        itineraryData = await apiFetch(`/itinerary/${currentTripId}`);
+      }
+    } catch(e) {
+      container.innerHTML = `<div class="map-loading"><span>載入失敗：${e.message}</span></div>`;
+      return;
+    }
+
+    // 取出有地點意義的項目（排除純交通但保留有 maps_url 的）
+    const items = itineraryData.filter(i =>
+      i.maps_url || i.type !== '🚉 交通'
+    );
+
+    container.innerHTML = '<div id="leaflet-map"></div>';
+
+    if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+    mapInstance = L.map('leaflet-map', { zoomControl: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 18,
+    }).addTo(mapInstance);
+
+    // 取得當前旅程的目的地關鍵字（from trip name）
+    const tripObj = trips.find(t => t.id === currentTripId);
+    const destHint = tripObj ? tripObj.name.replace(/[🍺🌸✈️⛩️🏯🎌🧳]/gu, '').trim().split(/\s/)[0] : '';
+
+    const groups = groupByDate(items);
+    const dates = Object.keys(groups).sort();
+    const allCoords = [];
+    const legendEntries = [];
+
+    for (let di = 0; di < dates.length; di++) {
+      const date = dates[di];
+      const dayItems = groups[date];
+      const color = DAY_COLORS[di % DAY_COLORS.length];
+      const dayCoords = [];
+
+      for (const item of dayItems) {
+        let coords = extractCoordsFromUrl(item.maps_url);
+        if (!coords) {
+          const q = (item.address || item.name) + (destHint ? ' ' + destHint : '');
+          coords = await geocodePlace(q);
+        }
+        if (!coords) continue;
+
+        dayCoords.push(coords);
+        allCoords.push(coords);
+
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="background:${color};color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);">${di+1}</div>`,
+          iconSize: [30, 30], iconAnchor: [15, 15],
+        });
+
+        L.marker(coords, { icon }).addTo(mapInstance).bindPopup(`
+          <div style="min-width:150px;font-family:sans-serif;line-height:1.5;">
+            <div style="font-weight:700;font-size:14px;">${item.name}</div>
+            ${item.time ? `<div style="font-size:12px;color:#666;">🕐 ${item.time}</div>` : ''}
+            ${item.type ? `<div style="font-size:12px;color:#666;">${item.type}</div>` : ''}
+            ${item.cost_jpy ? `<div style="font-size:12px;color:#C0392B;font-weight:600;">¥${item.cost_jpy.toLocaleString()}</div>` : ''}
+            ${item.notes ? `<div style="font-size:11px;color:#888;margin-top:2px;">${item.notes}</div>` : ''}
+            ${item.maps_url ? `<a href="${item.maps_url}" target="_blank" style="font-size:12px;color:#1565C0;display:block;margin-top:4px;">📍 Google Maps</a>` : ''}
+          </div>
+        `);
+      }
+
+      if (dayCoords.length > 1) {
+        L.polyline(dayCoords, { color, weight: 3, opacity: .75, dashArray: '7 5' }).addTo(mapInstance);
+      }
+
+      if (dayCoords.length) {
+        legendEntries.push({ color, label: fmtDate(date) });
+      }
+    }
+
+    if (allCoords.length) {
+      mapInstance.fitBounds(L.latLngBounds(allCoords), { padding: [50, 50] });
+    } else {
+      mapInstance.setView([33.5902, 130.4017], 12);
+      container.insertAdjacentHTML('beforeend',
+        '<div style="position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#fff;padding:8px 14px;border-radius:20px;font-size:12px;color:#888;z-index:999;box-shadow:0 2px 8px rgba(0,0,0,.15);">找不到景點座標，請填入 Google Maps 連結</div>'
+      );
+    }
+
+    // Legend
+    if (legendEntries.length) {
+      const legendHTML = legendEntries.map(e =>
+        `<div class="legend-row"><div class="legend-dot" style="background:${e.color}"></div><span>${e.label}</span></div>`
+      ).join('');
+      container.insertAdjacentHTML('beforeend',
+        `<div class="map-legend">${legendHTML}</div>`
+      );
+    }
+  }
+
+  /* ── NAV & VIEW SWITCHING ───────────────────────────────────────────── */
+  function switchView(view) {
+    currentView = view;
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + view).classList.add('active');
+    document.querySelectorAll('.nav-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.view === view);
+    });
+
+    const fab = document.getElementById('fab');
+    fab.style.display = view === 'map' ? 'none' : 'block';
+
+    if (view === 'itinerary') loadItinerary();
+    else if (view === 'expenses') loadExpenses();
+    else if (view === 'map') loadMapView();
+  }
+
+  /* ── EVENT WIRING ───────────────────────────────────────────────────── */
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchView(btn.dataset.view));
+  });
+
+  document.getElementById('trip-selector').addEventListener('change', e => {
+    currentTripId = e.target.value;
+    if (currentView === 'itinerary') loadItinerary();
+    else if (currentView === 'expenses') loadExpenses();
+  });
+
+  document.getElementById('fab').addEventListener('click', () => {
+    if (currentView === 'itinerary') openAddModal();
+    else if (currentView === 'expenses') openExpenseModal();
+    else if (currentView === 'trips') openTripModal();
+  });
+
+  // Trips view add button
+  document.getElementById('trips-content').addEventListener('click', e => {
+    if (e.target.closest('#add-trip-btn')) openTripModal();
+  });
+
+  document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+  document.getElementById('trip-modal-close').addEventListener('click', closeTripModal);
+  document.getElementById('expense-modal-close').addEventListener('click', closeExpenseModal);
+  document.getElementById('trip-save-btn').addEventListener('click', saveTrip);
+  document.getElementById('expense-save-btn').addEventListener('click', saveExpense);
+
+  // Close modals on overlay click
+  document.getElementById('modal-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('modal-overlay')) closeModal();
+  });
+  document.getElementById('trip-modal-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('trip-modal-overlay')) closeTripModal();
+  });
+  document.getElementById('expense-modal-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('expense-modal-overlay')) closeExpenseModal();
+  });
+
+  /* ── INIT ───────────────────────────────────────────────────────────── */
+  (async () => {
+    await loadTrips();
+    await loadItinerary();
+  })();
+</script>
+</body>
+</html>
