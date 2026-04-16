@@ -32,6 +32,11 @@
     <div id="expenses-content"><div class="spinner"></div></div>
   </section>
 
+  <!-- CHECKLIST VIEW -->
+  <section id="view-checklist" class="view">
+    <div id="checklist-content"><div class="spinner"></div></div>
+  </section>
+
   <!-- MAP VIEW -->
   <section id="view-map" class="view">
     <div id="map-container">
@@ -56,6 +61,9 @@
   </button>
   <button class="nav-btn" data-view="expenses">
     <span class="nav-icon">💴</span>費用
+  </button>
+  <button class="nav-btn" data-view="checklist">
+    <span class="nav-icon">✅</span>清單
   </button>
   <button class="nav-btn" data-view="map">
     <span class="nav-icon">🗾</span>地圖
@@ -960,6 +968,160 @@
     }
   }
 
+  /* ── CHECKLIST ──────────────────────────────────────────────────────── */
+  const CAT_COLORS = ['#1B2860','#C0392B','#2E7D32','#6A1B9A','#E65100'];
+  const DEFAULT_CHECKLIST = [
+    {
+      id: 'docs', name: '📋 證件 & 票務', color: CAT_COLORS[0], items: [
+        { id: 'd1', text: '確認護照有效期（出發日起至少6個月）', done: false },
+        { id: 'd2', text: '下載 / 列印機票電子票', done: false },
+        { id: 'd3', text: '住宿確認信（訂房紀錄）', done: false },
+        { id: 'd4', text: '購買旅平險', done: false },
+        { id: 'd5', text: '確認入境免簽 / 電子簽證', done: false },
+        { id: 'd6', text: '申請 / 確認信用卡海外刷卡功能', done: false },
+      ]
+    },
+    {
+      id: 'before', name: '✈️ 出發前準備', color: CAT_COLORS[1], items: [
+        { id: 'b1', text: '兌換外幣（JPY）', done: false },
+        { id: 'b2', text: '辦理海外網路卡 / SIM 卡', done: false },
+        { id: 'b3', text: '下載 Google Maps 離線地圖', done: false },
+        { id: 'b4', text: '下載翻譯 App（可離線）', done: false },
+        { id: 'b5', text: '準備轉接頭（日本：A 型）', done: false },
+        { id: 'b6', text: '通知銀行海外用卡', done: false },
+      ]
+    },
+    {
+      id: 'luggage', name: '🧳 行李清單', color: CAT_COLORS[2], items: [
+        { id: 'l1', text: '護照 + 影本', done: false },
+        { id: 'l2', text: '信用卡 + 現金', done: false },
+        { id: 'l3', text: '手機充電線 & 行動電源', done: false },
+        { id: 'l4', text: '轉接插頭', done: false },
+        { id: 'l5', text: '換洗衣物', done: false },
+        { id: 'l6', text: '盥洗用品', done: false },
+        { id: 'l7', text: '常備藥品（止瀉、感冒、胃藥）', done: false },
+        { id: 'l8', text: '相機 & 記憶卡', done: false },
+        { id: 'l9', text: '折疊雨傘', done: false },
+      ]
+    },
+    {
+      id: 'souvenir', name: '🛍️ 伴手禮採買', color: CAT_COLORS[3], items: [
+        { id: 's1', text: '藥妝（面膜、痠痛貼）', done: false },
+        { id: 's2', text: '零食（蝦餅、抹茶點心）', done: false },
+        { id: 's3', text: '清酒 / 梅酒', done: false },
+      ]
+    },
+    {
+      id: 'todo', name: '📝 旅途待辦', color: CAT_COLORS[4], items: [] }
+  ];
+
+  function clKey(tripId) { return `checklist_${tripId}`; }
+
+  function getChecklist(tripId) {
+    const raw = localStorage.getItem(clKey(tripId));
+    return raw ? JSON.parse(raw) : JSON.parse(JSON.stringify(DEFAULT_CHECKLIST));
+  }
+  function saveChecklist(tripId, data) {
+    localStorage.setItem(clKey(tripId), JSON.stringify(data));
+  }
+
+  function loadChecklist() {
+    const el = document.getElementById('checklist-content');
+    if (!currentTripId) {
+      el.innerHTML = `<div class="empty"><div class="emoji">✅</div><p>請先選擇旅程</p></div>`;
+      return;
+    }
+    renderChecklist(getChecklist(currentTripId));
+  }
+
+  function renderChecklist(data) {
+    const el = document.getElementById('checklist-content');
+    const total = data.reduce((s, c) => s + c.items.length, 0);
+    const done  = data.reduce((s, c) => s + c.items.filter(i => i.done).length, 0);
+    const pct   = total ? Math.round(done / total * 100) : 0;
+
+    el.innerHTML = `
+      <div class="checklist-summary">${done} / ${total} 完成</div>
+      <div class="checklist-progress"><div class="checklist-progress-bar" style="width:${pct}%"></div></div>
+      ${data.map((cat, ci) => `
+        <div class="checklist-category" data-ci="${ci}">
+          <div class="checklist-cat-header" style="background:${cat.color}">
+            <div class="checklist-cat-title">
+              ${cat.name}
+              <span class="checklist-cat-count">${cat.items.filter(i=>i.done).length}/${cat.items.length}</span>
+            </div>
+            <span class="checklist-cat-chevron">▼</span>
+          </div>
+          <div class="checklist-cat-items">
+            ${cat.items.map((item, ii) => `
+              <div class="checklist-item ${item.done?'done':''}" data-ci="${ci}" data-ii="${ii}">
+                <div class="checklist-cb">
+                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                    <path d="M1 3.5L3.5 6.5L9 1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <span class="checklist-item-text">${item.text}</span>
+                <span class="checklist-item-del" data-ci="${ci}" data-ii="${ii}">✕</span>
+              </div>
+            `).join('')}
+            <div class="checklist-add-row">
+              <input class="checklist-add-input" placeholder="新增項目..." data-ci="${ci}" />
+              <button class="checklist-add-btn" data-ci="${ci}">＋</button>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    `;
+
+    // 折疊
+    el.querySelectorAll('.checklist-cat-header').forEach(hdr => {
+      const cat = hdr.closest('.checklist-category');
+      const items = cat.querySelector('.checklist-cat-items');
+      items.style.maxHeight = items.scrollHeight + 'px';
+      hdr.addEventListener('click', () => {
+        const collapsed = cat.classList.toggle('collapsed');
+        if (!collapsed) items.style.maxHeight = items.scrollHeight + 'px';
+      });
+    });
+
+    // 勾選
+    el.querySelectorAll('.checklist-item').forEach(row => {
+      const { ci, ii } = row.dataset;
+      row.querySelector('.checklist-cb').addEventListener('click', e => {
+        e.stopPropagation();
+        data[ci].items[ii].done = !data[ci].items[ii].done;
+        saveChecklist(currentTripId, data);
+        renderChecklist(data);
+      });
+    });
+
+    // 刪除
+    el.querySelectorAll('.checklist-item-del').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const { ci, ii } = btn.dataset;
+        data[ci].items.splice(ii, 1);
+        saveChecklist(currentTripId, data);
+        renderChecklist(data);
+      });
+    });
+
+    // 新增
+    el.querySelectorAll('.checklist-add-btn').forEach(btn => {
+      const ci = btn.dataset.ci;
+      const input = el.querySelector(`.checklist-add-input[data-ci="${ci}"]`);
+      const add = () => {
+        const text = input.value.trim();
+        if (!text) return;
+        data[ci].items.push({ id: Date.now() + '', text, done: false });
+        saveChecklist(currentTripId, data);
+        renderChecklist(data);
+      };
+      btn.addEventListener('click', add);
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+    });
+  }
+
   /* ── MAP ────────────────────────────────────────────────────────────── */
   let mapInstance = null;
   const DAY_COLORS = ['#C0392B','#1565C0','#2E7D32','#6A1B9A','#E65100','#00695C','#AD1457'];
@@ -1213,10 +1375,11 @@
     });
 
     const fab = document.getElementById('fab');
-    fab.style.display = view === 'map' ? 'none' : 'block';
+    fab.style.display = (view === 'map' || view === 'checklist') ? 'none' : 'block';
 
     if (view === 'itinerary') loadItinerary();
     else if (view === 'expenses') loadExpenses();
+    else if (view === 'checklist') loadChecklist();
     else if (view === 'map') loadMapView();
   }
 

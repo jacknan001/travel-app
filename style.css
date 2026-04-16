@@ -239,6 +239,86 @@ html, body {
 .exp-jpy { font-size: 16px; font-weight: 700; color: var(--purple2); }
 .exp-twd { font-size: 11px; color: var(--muted); }
 
+/* ── checklist view ──────────────────────────────────────────────── */
+.checklist-category { margin-bottom: 14px; }
+.checklist-cat-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px 8px 12px;
+  border-radius: 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  user-select: none; -webkit-user-select: none;
+}
+.checklist-cat-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 700; color: #fff;
+}
+.checklist-cat-count {
+  font-size: 11px; background: rgba(255,255,255,.25);
+  padding: 1px 7px; border-radius: 12px; color: #fff;
+}
+.checklist-cat-chevron { color: rgba(255,255,255,.8); font-size: 11px; transition: transform .2s; }
+.checklist-category.collapsed .checklist-cat-chevron { transform: rotate(-90deg); }
+.checklist-cat-items { overflow: hidden; transition: max-height .2s ease; }
+.checklist-category.collapsed .checklist-cat-items { max-height: 0 !important; }
+
+.checklist-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  background: var(--card); border-radius: 10px;
+  margin-bottom: 5px; box-shadow: var(--shadow);
+}
+.checklist-cb {
+  flex-shrink: 0; width: 20px; height: 20px;
+  border-radius: 6px; border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all .15s;
+}
+.checklist-item.done .checklist-cb {
+  background: var(--purple1); border-color: var(--purple1);
+}
+.checklist-cb svg { display: none; }
+.checklist-item.done .checklist-cb svg { display: block; }
+.checklist-item-text {
+  flex: 1; font-size: 14px; cursor: pointer;
+}
+.checklist-item.done .checklist-item-text {
+  text-decoration: line-through; color: var(--muted);
+}
+.checklist-item-del {
+  flex-shrink: 0; color: var(--border); font-size: 16px;
+  cursor: pointer; padding: 2px 4px; line-height: 1;
+  transition: color .15s;
+}
+.checklist-item-del:hover { color: #C0392B; }
+
+.checklist-add-row {
+  display: flex; gap: 8px; margin-top: 6px;
+}
+.checklist-add-input {
+  flex: 1; padding: 8px 12px; border-radius: 10px;
+  border: 1.5px dashed var(--border); font-size: 13px;
+  color: var(--text); background: transparent; outline: none;
+  font-family: inherit;
+}
+.checklist-add-input:focus { border-color: var(--purple1); border-style: solid; }
+.checklist-add-btn {
+  padding: 8px 14px; border-radius: 10px; border: none;
+  background: var(--purple1); color: #fff;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.checklist-progress {
+  height: 4px; border-radius: 2px; background: var(--border);
+  margin-bottom: 14px; overflow: hidden;
+}
+.checklist-progress-bar {
+  height: 100%; border-radius: 2px;
+  background: var(--grad); transition: width .3s;
+}
+.checklist-summary {
+  text-align: center; font-size: 12px; color: var(--muted); margin-bottom: 14px;
+}
+
 /* ── trips view ───────────────────────────────────────────────────── */
 .trip-card {
   background: var(--card); border-radius: var(--radius);
