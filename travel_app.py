@@ -2,17 +2,22 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from notion_client import Client
 from dotenv import load_dotenv
+from datetime import datetime, timezone, timedelta
+from urllib.request import urlopen, Request
+from urllib.parse import urlencode
 import os
+import json as _json
 
 load_dotenv()
 
 app = Flask(__name__, static_folder='.')
 CORS(app)
 
-NOTION_TOKEN    = os.getenv("NOTION_TOKEN")
-TRIPS_DB_ID     = os.getenv("TRIPS_DB_ID")
-ITINERARY_DB_ID = os.getenv("ITINERARY_DB_ID")
-EXPENSES_DB_ID  = os.getenv("EXPENSES_DB_ID")
+NOTION_TOKEN         = os.getenv("NOTION_TOKEN")
+TRIPS_DB_ID          = os.getenv("TRIPS_DB_ID")
+ITINERARY_DB_ID      = os.getenv("ITINERARY_DB_ID")
+EXPENSES_DB_ID       = os.getenv("EXPENSES_DB_ID")
+GOOGLE_MAPS_API_KEY  = os.getenv("GOOGLE_MAPS_API_KEY", "")
 
 notion = Client(auth=NOTION_TOKEN)
 
@@ -330,6 +335,142 @@ def update_expense(item_id):
 def delete_expense(item_id):
     notion.pages.update(page_id=item_id, archived=True)
     return jsonify({"success": True})
+
+
+# CONFIG ----------------------------------------------------------------------
+
+@app.route("/api/config")
+def get_config():
+    return jsonify({"maps_key": GOOGLE_MAPS_API_KEY or ""})
+
+
+# TRANSIT ---------------------------------------------------------------------
+
+JST = timezone(timedelta(hours=9))
+
+@app.route("/api/transit", methods=["GET"])
+def get_transit():
+    if not GOOGLE_MAPS_API_KEY:
+        return jsonify({"error": "GOOGLE_MAPS_API_KEY 尚未設定，請在 .env 填入您的 Google Maps API Key"}), 503
+
+    origin      = request.args.get("from", "").strip()
+    destination = request.args.get("to", "").strip()
+    date_str    = request.args.get("date", "")
+    time_str    = request.args.get("time", "")
+    hint        = request.args.get("hint", "Japan")
+
+    if not origin or not destination:
+        return jsonify({"error": "缺少 from / to 參數"}), 400
+
+    # Build departure timestamp (treat item time as JST)
+    now_ts = int(datetime.now(tz=JST).timestamp())
+    try:
+        if date_str and time_str:
+            dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=JST)
+            dep_ts = int(dt.timestamp())
+        else:
+            dep_ts = now_ts
+    except Exception:
+        dep_ts = now_ts
+
+    # Transit schedules are only available ~few months ahead.
+    # If departure is in the past OR more than 60 days away, use now.
+    sixty_days = 60 * 24 * 3600
+    if dep_ts < now_ts or dep_ts > now_ts + sixty_days:
+        dep_ts = now_ts
+
+    origin_q = origin
+    dest_q   = destination
+
+    def fetch_route(departure_time):
+        qs = urlencode({
+            "origin":         origin_q,
+            "destination":    dest_q,
+            "mode":           "transit",
+            "departure_time": departure_time,
+            "region":         "jp",
+            "language":       "zh-TW",
+            "key":            GOOGLE_MAPS_API_KEY,
+        })
+        url = f"https://maps.googleapis.com/maps/api/directions/json?{qs}"
+        with urlopen(Request(url), timeout=8) as resp:
+            return _json.loads(resp.read().decode())
+
+    routes      = []
+    seen        = set()
+    cur_ts      = dep_ts
+    last_status = None
+    last_msg    = None
+
+    for _ in range(7):          # try up to 7 times to collect 5 results
+        if len(routes) >= 5:
+            break
+        try:
+            data = fetch_route(cur_ts)
+            last_status = data.get("status")
+            last_msg    = data.get("error_message", "")
+            if last_status != "OK" or not data.get("routes"):
+                break
+
+            route = data["routes"][0]
+            leg   = route["legs"][0]
+
+            dep_text  = leg.get("departure_time", {}).get("text", "")
+            arr_text  = leg.get("arrival_time",   {}).get("text", "")
+            dep_value = leg.get("departure_time", {}).get("value", 0)
+            arr_value = leg.get("arrival_time",   {}).get("value", 0)
+
+            dedup_key = dep_text or str(dep_value)
+            if dedup_key in seen:
+                cur_ts += 120   # advance 2 min and retry
+                continue
+            seen.add(dedup_key)
+
+            steps = []
+            for step in leg.get("steps", []):
+                if step.get("travel_mode") != "TRANSIT":
+                    continue
+                td   = step.get("transit_details", {})
+                line = td.get("line", {})
+                steps.append({
+                    "line":           line.get("name", ""),
+                    "short_name":     line.get("short_name", ""),
+                    "headsign":       td.get("headsign", ""),
+                    "departure_stop": td.get("departure_stop", {}).get("name", ""),
+                    "arrival_stop":   td.get("arrival_stop",  {}).get("name", ""),
+                    "departure_time": td.get("departure_time", {}).get("text", ""),
+                    "arrival_time":   td.get("arrival_time",   {}).get("text", ""),
+                    "num_stops":      td.get("num_stops", 0),
+                    "vehicle":        line.get("vehicle", {}).get("type", ""),
+                    "color":          line.get("color", ""),
+                    "text_color":     line.get("text_color", ""),
+                })
+
+            route_info = {
+                "departure": dep_text,
+                "arrival":   arr_text,
+                "duration":  leg.get("duration", {}).get("text", ""),
+                "steps":     steps,
+            }
+            if route.get("fare"):
+                route_info["fare"] = route["fare"].get("text", "")
+
+            routes.append(route_info)
+
+            # Next iteration: 5 minutes after previous departure
+            cur_ts = dep_value + 5 * 60 if dep_value else cur_ts + 1800
+
+        except Exception as ex:
+            last_msg = str(ex)
+            break
+
+    return jsonify({
+        "routes":      routes,
+        "origin":      origin_q,
+        "destination": dest_q,
+        "status":      last_status,
+        "error":       last_msg,
+    })
 
 
 # ── main ──────────────────────────────────────────────────────────────────────

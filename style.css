@@ -563,6 +563,85 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ── transit query button ─────────────────────────────────────────── */
+.transit-query-btn {
+  font-size: 11px; color: #1565C0;
+  padding: 3px 9px; border: 1.5px solid #1565C0; border-radius: 20px;
+  background: rgba(21,101,192,.08); white-space: nowrap;
+  cursor: pointer; font-weight: 600; font-family: inherit;
+  transition: background .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.transit-query-btn:active { background: rgba(21,101,192,.2); }
+
+/* ── transit bottom sheet ─────────────────────────────────────────── */
+#transit-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  z-index: 300; display: none; align-items: flex-end;
+}
+#transit-overlay.open { display: flex; }
+#transit-sheet {
+  background: var(--card);
+  border-radius: 22px 22px 0 0;
+  width: 100%; max-height: 78vh;
+  overflow-y: auto;
+  padding: 0 0 34px;
+  transform: translateY(100%);
+  transition: transform .3s cubic-bezier(.32,.72,0,1);
+}
+#transit-overlay.open #transit-sheet { transform: translateY(0); }
+
+.transit-sheet-title {
+  font-size: 16px; font-weight: 700;
+}
+.transit-sheet-subtitle {
+  font-size: 12px; color: var(--muted); margin-top: 2px;
+}
+
+.transit-route-card {
+  background: var(--bg); border-radius: 12px;
+  padding: 12px 14px; margin-bottom: 8px;
+  border: 1.5px solid var(--border);
+}
+.transit-route-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 6px;
+}
+.transit-time-block { flex: 1; }
+.transit-times {
+  font-size: 19px; font-weight: 800; color: var(--text); line-height: 1.1;
+}
+.transit-duration-badge {
+  font-size: 12px; font-weight: 600; color: var(--purple2);
+  background: rgba(192,57,43,.1); padding: 3px 10px;
+  border-radius: 12px; flex-shrink: 0; margin-left: 8px;
+}
+.transit-fare {
+  font-size: 13px; font-weight: 700; color: var(--purple1); margin-top: 3px;
+}
+.transit-step {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 7px 0; border-top: 1px solid var(--border); margin-top: 4px;
+}
+.transit-step-icon {
+  width: 26px; height: 26px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; flex-shrink: 0; background: #1565C0; color: #fff;
+}
+.transit-step-info { flex: 1; min-width: 0; }
+.transit-step-line { font-size: 13px; font-weight: 700; }
+.transit-step-headsign { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.transit-step-stops { font-size: 11px; color: var(--muted); }
+
+.transit-error {
+  background: #FFF8E7; border-radius: 12px; padding: 14px;
+  font-size: 13px; color: #92660A; line-height: 1.6;
+  border: 1px solid #E8D5A0;
+}
+.transit-empty {
+  text-align: center; padding: 30px 16px; color: var(--muted); font-size: 13px;
+}
+
 /* ── scrollbar ────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

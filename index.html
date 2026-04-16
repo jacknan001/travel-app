@@ -240,6 +240,23 @@
   </div>
 </div>
 
+<!-- ── TRANSIT SHEET ─────────────────────────────────────────────────────── -->
+<div id="transit-overlay">
+  <div id="transit-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div>
+        <div class="transit-sheet-title">🚆 班次查詢</div>
+        <div class="transit-sheet-subtitle" id="transit-subtitle"></div>
+      </div>
+      <button class="modal-close" id="transit-close-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="transit-routes"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
 <!-- ── TOAST ─────────────────────────────────────────────────────────────── -->
 <div id="toast"></div>
 
@@ -462,6 +479,10 @@
       a.addEventListener('click', e => e.stopPropagation());
     });
 
+    el.querySelectorAll('.transit-query-btn').forEach(a => {
+      a.addEventListener('click', e => e.stopPropagation());
+    });
+
     // 時間 inline 編輯
     el.querySelectorAll('.item-time').forEach(span => {
       span.addEventListener('click', e => {
@@ -532,8 +553,18 @@
     setTimeout(() => document.addEventListener('click', closeTimePopover), 100);
   }
 
+  function parseTransitNames(name) {
+    const m = name ? name.match(/(.+?)\s*[→>]\s*(.+)/) : null;
+    return m ? { from: m[1].trim(), to: m[2].trim() } : null;
+  }
+
   function renderItemCard(item) {
     const doneClass = item.done ? 'done' : '';
+    const transitRoute = parseTransitNames(item.name);
+    const showTransitBtn = item.type === '🚉 交通' && transitRoute;
+    const gmTransitUrl = showTransitBtn
+      ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(transitRoute.from)}&destination=${encodeURIComponent(transitRoute.to)}&travelmode=transit`
+      : '';
     return `
       <div class="item-card ${doneClass}" data-id="${item.id}">
         <div class="drag-handle" title="拖曳排序">⠿</div>
@@ -551,7 +582,10 @@
           ${item.notes ? `<div class="item-meta">${item.notes}</div>` : ''}
           <div class="item-footer">
             <span class="item-cost">${item.cost_jpy != null ? fmtJPY(item.cost_jpy) + ' · ' + fmtTWD(item.cost_jpy) : ''}</span>
-            ${item.maps_url ? `<a class="maps-link" href="${item.maps_url}" target="_blank">📍 地圖</a>` : ''}
+            <div style="display:flex;gap:6px;align-items:center;">
+              ${showTransitBtn ? `<a class="transit-query-btn" href="${gmTransitUrl}" target="_blank">🚆 查詢班次</a>` : ''}
+              ${item.maps_url ? `<a class="maps-link" href="${item.maps_url}" target="_blank">📍 地圖</a>` : ''}
+            </div>
           </div>
         </div>
       </div>
@@ -1123,6 +1157,8 @@
   }
 
   /* ── MAP ────────────────────────────────────────────────────────────── */
+
+  /* ── MAP ────────────────────────────────────────────────────────────── */
   let mapInstance = null;
   const DAY_COLORS = ['#C0392B','#1565C0','#2E7D32','#6A1B9A','#E65100','#00695C','#AD1457'];
 
@@ -1419,6 +1455,9 @@
   });
   document.getElementById('expense-modal-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('expense-modal-overlay')) closeExpenseModal();
+  });
+  document.getElementById('transit-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('transit-overlay')) closeTransitSheet();
   });
 
   /* ── INIT ───────────────────────────────────────────────────────────── */
