@@ -112,6 +112,10 @@ def paginate_query(fn, **kwargs):
 def index():
     return send_from_directory(".", "index.html")
 
+@app.route("/style.css")
+def serve_css():
+    return send_from_directory(".", "style.css", mimetype="text/css")
+
 
 # TRIPS -----------------------------------------------------------------------
 
@@ -147,6 +151,33 @@ def create_trip():
         properties=properties,
     )
     return jsonify(parse_trip(page)), 201
+
+
+@app.route("/api/trips/<trip_id>", methods=["PUT"])
+def update_trip(trip_id):
+    data = request.get_json()
+    properties = {}
+    if "name" in data:
+        properties["旅程名稱"] = {"title": [{"text": {"content": data["name"]}}]}
+    if "start_date" in data:
+        properties["出發日期"] = {"date": {"start": data["start_date"]}} if data["start_date"] else {"date": None}
+    if "end_date" in data:
+        properties["回程日期"] = {"date": {"start": data["end_date"]}} if data["end_date"] else {"date": None}
+    if "people" in data:
+        properties["人數"] = {"number": data["people"]}
+    if "budget_twd" in data:
+        properties["總預算(TWD)"] = {"number": data["budget_twd"]}
+    if "status" in data:
+        properties["狀態"] = {"select": {"name": data["status"]}} if data["status"] else {"select": None}
+
+    page = notion.pages.update(page_id=trip_id, properties=properties)
+    return jsonify(parse_trip(page))
+
+
+@app.route("/api/trips/<trip_id>", methods=["DELETE"])
+def delete_trip(trip_id):
+    notion.pages.update(page_id=trip_id, archived=True)
+    return jsonify({"success": True})
 
 
 # ITINERARY -------------------------------------------------------------------
