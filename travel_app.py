@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 from datetime import datetime, timezone, timedelta
 from urllib.request import urlopen, Request
 from urllib.parse import urlencode
+import ssl
+
+_ssl_ctx = ssl._create_unverified_context()
 import os
 import json as _json
 
@@ -355,29 +358,24 @@ def get_transit():
 
     origin      = request.args.get("from", "").strip()
     destination = request.args.get("to", "").strip()
-    date_str    = request.args.get("date", "")
-    time_str    = request.args.get("time", "")
-    hint        = request.args.get("hint", "Japan")
+    dep_ts_param = request.args.get("dep_ts", "")
 
     if not origin or not destination:
         return jsonify({"error": "缺少 from / to 參數"}), 400
 
-    # Build departure timestamp (treat item time as JST)
     now_ts = int(datetime.now(tz=JST).timestamp())
     try:
-        if date_str and time_str:
-            dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=JST)
-            dep_ts = int(dt.timestamp())
-        else:
-            dep_ts = now_ts
-    except Exception:
+        dep_ts = int(dep_ts_param) if dep_ts_param else now_ts
+    except ValueError:
         dep_ts = now_ts
 
-    # Transit schedules are only available ~few months ahead.
-    # If departure is in the past OR more than 60 days away, use now.
-    sixty_days = 60 * 24 * 3600
-    if dep_ts < now_ts or dep_ts > now_ts + sixty_days:
-        dep_ts = now_ts
+    # 若仍在過去或超過 60 天，保底用明天 09:00
+    if dep_ts < now_ts or dep_ts > now_ts + 60 * 24 * 3600:
+        dep_ts = int((datetime.now(tz=JST) + timedelta(days=1)).replace(
+            hour=9, minute=0, second=0, microsecond=0).timestamp())
+
+    dep_human = datetime.fromtimestamp(dep_ts, tz=JST).strftime("%Y-%m-%d %H:%M JST")
+    print(f"[Transit] from={origin} to={destination} departure={dep_human} ({dep_ts})", flush=True)
 
     origin_q = origin
     dest_q   = destination
@@ -393,7 +391,8 @@ def get_transit():
             "key":            GOOGLE_MAPS_API_KEY,
         })
         url = f"https://maps.googleapis.com/maps/api/directions/json?{qs}"
-        with urlopen(Request(url), timeout=8) as resp:
+        print(f"[Transit] Directions API → {url}", flush=True)
+        with urlopen(Request(url), timeout=8, context=_ssl_ctx) as resp:
             return _json.loads(resp.read().decode())
 
     routes      = []
@@ -418,7 +417,6 @@ def get_transit():
             dep_text  = leg.get("departure_time", {}).get("text", "")
             arr_text  = leg.get("arrival_time",   {}).get("text", "")
             dep_value = leg.get("departure_time", {}).get("value", 0)
-            arr_value = leg.get("arrival_time",   {}).get("value", 0)
 
             dedup_key = dep_text or str(dep_value)
             if dedup_key in seen:
@@ -428,23 +426,30 @@ def get_transit():
 
             steps = []
             for step in leg.get("steps", []):
-                if step.get("travel_mode") != "TRANSIT":
-                    continue
-                td   = step.get("transit_details", {})
-                line = td.get("line", {})
-                steps.append({
-                    "line":           line.get("name", ""),
-                    "short_name":     line.get("short_name", ""),
-                    "headsign":       td.get("headsign", ""),
-                    "departure_stop": td.get("departure_stop", {}).get("name", ""),
-                    "arrival_stop":   td.get("arrival_stop",  {}).get("name", ""),
-                    "departure_time": td.get("departure_time", {}).get("text", ""),
-                    "arrival_time":   td.get("arrival_time",   {}).get("text", ""),
-                    "num_stops":      td.get("num_stops", 0),
-                    "vehicle":        line.get("vehicle", {}).get("type", ""),
-                    "color":          line.get("color", ""),
-                    "text_color":     line.get("text_color", ""),
-                })
+                mode = step.get("travel_mode", "")
+                if mode == "TRANSIT":
+                    td   = step.get("transit_details", {})
+                    line = td.get("line", {})
+                    steps.append({
+                        "mode":           "TRANSIT",
+                        "line":           line.get("name", ""),
+                        "short_name":     line.get("short_name", ""),
+                        "headsign":       td.get("headsign", ""),
+                        "departure_stop": td.get("departure_stop", {}).get("name", ""),
+                        "arrival_stop":   td.get("arrival_stop",  {}).get("name", ""),
+                        "departure_time": td.get("departure_time", {}).get("text", ""),
+                        "arrival_time":   td.get("arrival_time",   {}).get("text", ""),
+                        "num_stops":      td.get("num_stops", 0),
+                        "vehicle":        line.get("vehicle", {}).get("type", ""),
+                        "color":          line.get("color", ""),
+                        "text_color":     line.get("text_color", ""),
+                    })
+                elif mode == "WALKING":
+                    steps.append({
+                        "mode":     "WALKING",
+                        "duration": step.get("duration", {}).get("text", ""),
+                        "distance": step.get("distance", {}).get("text", ""),
+                    })
 
             route_info = {
                 "departure": dep_text,

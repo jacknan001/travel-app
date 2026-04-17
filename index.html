@@ -4,8 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>旅遊計畫</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/sortablejs@1.15.2/Sortable.min.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -387,7 +385,7 @@
     try {
       itineraryData = await apiFetch(`/itinerary/${currentTripId}`);
       renderItinerary();
-      prefetchMapData(); // 背景靜默預取地圖資料，不等待
+      // prefetchMapData 已移除
     } catch (e) {
       document.getElementById('itinerary-content').innerHTML =
         `<div class="empty"><p>載入失敗：${e.message}</p></div>`;
@@ -412,7 +410,7 @@
         if (coords) dayCoords.push(coords);
       }
       for (let i = 0; i < dayCoords.length - 1; i++) {
-        await getRouteInfo(dayCoords[i], dayCoords[i + 1]);
+        await getTransitTime(dayCoords[i], dayCoords[i + 1]);
       }
     }
   }
@@ -1157,25 +1155,18 @@
   }
 
   /* ── MAP ────────────────────────────────────────────────────────────── */
-
-  /* ── MAP ────────────────────────────────────────────────────────────── */
   let mapInstance = null;
+  let _mapOverlays = [];
   const DAY_COLORS = ['#C0392B','#1565C0','#2E7D32','#6A1B9A','#E65100','#00695C','#AD1457'];
 
-  // ── 持久化快取（localStorage）──────────────────────────────────────────
-  const LS_GEO = 'travel_geocode_v1';
-  const LS_TRANSIT = 'travel_transit_v1';
+  const LS_GEO = 'travel_geocode_v2';
+  const LS_TRANSIT = 'travel_transit_v2';
   let geocodeCache = {};
   let transitCache = {};
   try { geocodeCache = JSON.parse(localStorage.getItem(LS_GEO) || '{}'); } catch(e) {}
   try { transitCache = JSON.parse(localStorage.getItem(LS_TRANSIT) || '{}'); } catch(e) {}
-
-  function saveGeocodeCache() {
-    try { localStorage.setItem(LS_GEO, JSON.stringify(geocodeCache)); } catch(e) {}
-  }
-  function saveTransitCache() {
-    try { localStorage.setItem(LS_TRANSIT, JSON.stringify(transitCache)); } catch(e) {}
-  }
+  function saveGeocodeCache() { try { localStorage.setItem(LS_GEO, JSON.stringify(geocodeCache)); } catch(e) {} }
+  function saveTransitCache() { try { localStorage.setItem(LS_TRANSIT, JSON.stringify(transitCache)); } catch(e) {} }
 
   function extractCoordsFromUrl(url) {
     if (!url) return null;
@@ -1183,111 +1174,214 @@
     return m ? [parseFloat(m[1]), parseFloat(m[2])] : null;
   }
 
-  async function geocodePlace(query) {
-    if (geocodeCache[query]) return geocodeCache[query];
-    try {
-      await new Promise(r => setTimeout(r, 350));
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
-        { headers: { 'Accept-Language': 'ja,zh-TW,zh' } }
-      );
-      const data = await res.json();
-      if (data.length) {
-        const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-        geocodeCache[query] = coords;
-        saveGeocodeCache();
-        return coords;
-      }
-    } catch(e) {}
-    return null;
+  function haversineDistance(c1, c2) {
+    const R = 6371000;
+    const [φ1, λ1] = c1.map(x => x * Math.PI / 180);
+    const [φ2, λ2] = c2.map(x => x * Math.PI / 180);
+    const a = Math.sin((φ2-φ1)/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin((λ2-λ1)/2)**2;
+    return 2 * R * Math.asin(Math.sqrt(a));
   }
 
-  // 使用 OSRM 取得兩點間的路線距離，再估算大眾運輸時間
   function transitKey(c1, c2) {
     return `${c1[0].toFixed(4)},${c1[1].toFixed(4)}>${c2[0].toFixed(4)},${c2[1].toFixed(4)}`;
   }
 
-  async function getRouteInfo(coords1, coords2) {
-    const key = transitKey(coords1, coords2);
-    if (transitCache[key]) return transitCache[key];
+  // ── Google Maps API loader ──────────────────────────────────────────────
+  let _googleMapsLoaded = false;
+  let _googleMapsLoadPromise = null;
+
+  function loadGoogleMapsAPI(key) {
+    if (_googleMapsLoaded) return Promise.resolve();
+    if (_googleMapsLoadPromise) return _googleMapsLoadPromise;
+    _googleMapsLoadPromise = new Promise(resolve => {
+      window.__gmapsReady = () => { _googleMapsLoaded = true; resolve(); };
+      const s = document.createElement('script');
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=__gmapsReady&language=zh-TW`;
+      document.head.appendChild(s);
+    });
+    return _googleMapsLoadPromise;
+  }
+
+  // ── Geocoding ────────────────────────────────────────────────────────────
+  let _geocoder = null;
+  async function geocodePlace(query) {
+    if (geocodeCache[query]) return geocodeCache[query];
+    if (!_geocoder) _geocoder = new google.maps.Geocoder();
+    return new Promise(resolve => {
+      _geocoder.geocode({ address: query, region: 'jp' }, (results, status) => {
+        if (status === 'OK' && results[0]) {
+          const loc = results[0].geometry.location;
+          const coords = [loc.lat(), loc.lng()];
+          geocodeCache[query] = coords;
+          saveGeocodeCache();
+          resolve(coords);
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  }
+
+  // ── Routes API (new, replaces DirectionsService for transit) ────────────
+  let _mapsApiKey = null;
+  const _routeResultCache = {}; // key → LatLng[] decoded path
+
+  function decodePolyline(encoded) {
+    const pts = [];
+    let i = 0, lat = 0, lng = 0;
+    while (i < encoded.length) {
+      let s = 0, r = 0, b;
+      do { b = encoded.charCodeAt(i++) - 63; r |= (b & 0x1f) << s; s += 5; } while (b >= 0x20);
+      lat += (r & 1) ? ~(r >> 1) : r >> 1;
+      s = 0; r = 0;
+      do { b = encoded.charCodeAt(i++) - 63; r |= (b & 0x1f) << s; s += 5; } while (b >= 0x20);
+      lng += (r & 1) ? ~(r >> 1) : r >> 1;
+      pts.push(new google.maps.LatLng(lat / 1e5, lng / 1e5));
+    }
+    return pts;
+  }
+
+  function tomorrow9amDate() {
+    const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(9, 0, 0, 0); return t;
+  }
+
+  async function callRoutesAPI(coords1, coords2, { mode = 'TRANSIT', alternatives = false, departureTime = null, fieldMask = null } = {}) {
+    if (!_mapsApiKey) return null;
+    const depTime = departureTime || tomorrow9amDate();
+    const body = {
+      origin:      { location: { latLng: { latitude: coords1[0], longitude: coords1[1] } } },
+      destination: { location: { latLng: { latitude: coords2[0], longitude: coords2[1] } } },
+      travelMode: mode,
+      computeAlternativeRoutes: alternatives,
+    };
+    if (mode === 'TRANSIT') {
+      body.departureTime = depTime.toISOString();
+      body.transitPreferences = { routingPreference: 'FEWER_TRANSFERS' };
+    }
+    const mask = fieldMask || (mode === 'TRANSIT'
+      ? 'routes.duration,routes.legs,routes.polyline.encodedPolyline,routes.travelAdvisory.transitFare'
+      : 'routes.duration,routes.polyline.encodedPolyline');
     try {
-      const [lat1, lon1] = coords1;
-      const [lat2, lon2] = coords2;
-      await new Promise(r => setTimeout(r, 200));
-      const res = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`
-      );
+      const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': _mapsApiKey, 'X-Goog-FieldMask': mask },
+        body: JSON.stringify(body),
+      });
       const data = await res.json();
-      if (data.code === 'Ok' && data.routes.length) {
-        const result = { distance: data.routes[0].distance }; // 公尺
-        transitCache[key] = result;
-        saveTransitCache();
-        return result;
-      }
-    } catch(e) {}
+      if (!res.ok) { console.warn('[Routes API]', mode, data?.error?.message || res.status); return null; }
+      return data.routes?.length ? data.routes : null;
+    } catch(e) { console.error('[Routes API] fetch error:', e); return null; }
+  }
+
+  async function getTransitTime(coords1, coords2) {
+    const key = transitKey(coords1, coords2);
+    if (transitCache[key]?.isTransit) return transitCache[key];
+
+    // Try TRANSIT via Routes API
+    const transitRoutes = await callRoutesAPI(coords1, coords2, { mode: 'TRANSIT' });
+    if (transitRoutes?.[0]) {
+      const minutes = Math.round(parseInt(transitRoutes[0].duration) / 60);
+      const info = { minutes, isTransit: true };
+      const enc = transitRoutes[0].polyline?.encodedPolyline;
+      if (enc) _routeResultCache[key] = decodePolyline(enc);
+      transitCache[key] = info; saveTransitCache();
+      return info;
+    }
+
+    // Fall back to DRIVING
+    const drivingRoutes = await callRoutesAPI(coords1, coords2, { mode: 'DRIVE' });
+    if (drivingRoutes?.[0]) {
+      const minutes = Math.round(parseInt(drivingRoutes[0].duration) / 60);
+      const enc = drivingRoutes[0].polyline?.encodedPolyline;
+      if (enc) _routeResultCache[key] = decodePolyline(enc);
+      return { minutes, isTransit: false };
+    }
+
+    const dist = haversineDistance(coords1, coords2);
+    return { minutes: Math.max(Math.round(dist / 1000 / 4.5 * 60), 1), isTransit: false };
+  }
+
+  async function fetchRouteForMap(coords1, coords2) {
+    const key = transitKey(coords1, coords2);
+    if (_routeResultCache[key]) return _routeResultCache[key];
+    for (const mode of ['TRANSIT', 'DRIVE']) {
+      const routes = await callRoutesAPI(coords1, coords2, { mode });
+      const enc = routes?.[0]?.polyline?.encodedPolyline;
+      if (enc) { const path = decodePolyline(enc); _routeResultCache[key] = path; return path; }
+    }
     return null;
   }
 
-  // 根據距離估算交通時間（地鐵：平均 35 km/h + 5 分等待/換乘；步行：4.5 km/h）
-  function estimateTransit(distanceMeters) {
-    const km = distanceMeters / 1000;
-    const metro = Math.max(Math.round(km / 35 * 60 + 5), 5);
-    const walk  = Math.round(km / 4.5 * 60);
-    return { metro, walk, km: Math.round(km * 10) / 10 };
-  }
+  let _mapLoading = false;
 
   async function loadMapView() {
+    if (_mapLoading) return; // prevent concurrent loads
+    _mapLoading = true;
     const container = document.getElementById('map-container');
 
     if (!currentTripId) {
+      _mapLoading = false;
       container.innerHTML = '<div class="map-loading"><div class="emoji">🗾</div><span>請先選擇旅程</span></div>';
       return;
     }
 
-    container.innerHTML = '<div class="map-loading"><div class="spinner"></div><span>正在定位景點...</span></div>';
+    container.innerHTML = '<div class="map-loading"><div class="spinner"></div><span>正在載入地圖...</span></div>';
 
     try {
-      if (!itineraryData.length) {
-        itineraryData = await apiFetch(`/itinerary/${currentTripId}`);
-      }
+      if (!itineraryData.length) itineraryData = await apiFetch(`/itinerary/${currentTripId}`);
     } catch(e) {
+      _mapLoading = false;
       container.innerHTML = `<div class="map-loading"><span>載入失敗：${e.message}</span></div>`;
       return;
     }
 
-    // 取出有地點意義的項目（排除純交通但保留有 maps_url 的）
-    const items = itineraryData.filter(i =>
-      i.maps_url || i.type !== '🚉 交通'
-    );
+    try {
+      const config = await apiFetch('/config');
+      if (!config.maps_key) {
+        _mapLoading = false;
+        container.innerHTML = '<div class="map-loading"><span>請在 .env 設定 GOOGLE_MAPS_API_KEY</span></div>';
+        return;
+      }
+      _mapsApiKey = config.maps_key;
+      await loadGoogleMapsAPI(config.maps_key);
+    } catch(e) {
+      _mapLoading = false;
+      container.innerHTML = `<div class="map-loading"><span>地圖載入失敗：${e.message}</span></div>`;
+      return;
+    }
 
-    container.innerHTML = '<div id="leaflet-map"></div>';
+    const items = itineraryData.filter(i => i.maps_url || i.type !== '🚉 交通');
+    container.innerHTML = '<div id="gmap"></div>';
 
-    if (mapInstance) { mapInstance.remove(); mapInstance = null; }
-    mapInstance = L.map('leaflet-map', { zoomControl: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap',
-      maxZoom: 18,
-    }).addTo(mapInstance);
+    _mapOverlays.forEach(o => { if (o.setMap) o.setMap(null); });
+    _mapOverlays = [];
 
-    // 取得當前旅程的目的地關鍵字（from trip name）
+    mapInstance = new google.maps.Map(document.getElementById('gmap'), {
+      zoom: 13,
+      center: { lat: 33.59, lng: 130.40 },
+      mapTypeControl: false,
+      fullscreenControl: false,
+      streetViewControl: false,
+      gestureHandling: 'greedy',
+    });
+
     const tripObj = trips.find(t => t.id === currentTripId);
     const destHint = tripObj ? tripObj.name.replace(/[🍺🌸✈️⛩️🏯🎌🧳]/gu, '').trim().split(/\s/)[0] : '';
 
     const groups = groupByDate(items);
     const dates = Object.keys(groups).sort();
-    const allCoords = [];
-    const dayLayerGroups = []; // L.LayerGroup，每天一組
-    const dayCoordsList = [];  // 每天的座標陣列（用於 zoom）
-    const dayMeta = [];        // { color, label }
+    const allLatLngs = [];
+    const dayOverlayGroups = [];
+    const dayLatLngsList = [];
+    const dayMeta = [];
 
     for (let di = 0; di < dates.length; di++) {
       const date = dates[di];
-      const dayItems = groups[date];
       const color = DAY_COLORS[di % DAY_COLORS.length];
       const dayItemsWC = [];
-      const dayLG = L.layerGroup().addTo(mapInstance); // 每天獨立圖層
+      const overlays = [];
 
-      for (const item of dayItems) {
+      for (const item of groups[date]) {
         let coords = extractCoordsFromUrl(item.maps_url);
         if (!coords) {
           const q = (item.address || item.name) + (destHint ? ' ' + destHint : '');
@@ -1296,15 +1390,19 @@
         if (!coords) continue;
 
         dayItemsWC.push({ item, coords });
-        allCoords.push(coords);
+        allLatLngs.push(new google.maps.LatLng(coords[0], coords[1]));
 
-        const icon = L.divIcon({
-          className: '',
-          html: `<div style="background:${color};color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);">${di+1}</div>`,
-          iconSize: [30, 30], iconAnchor: [15, 15],
+        const svgMarker = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30"><circle cx="15" cy="15" r="13" fill="${color}" stroke="white" stroke-width="2"/><text x="15" y="19" text-anchor="middle" font-size="11" font-weight="bold" fill="white">${di+1}</text></svg>`;
+        const marker = new google.maps.Marker({
+          position: { lat: coords[0], lng: coords[1] },
+          map: mapInstance,
+          icon: {
+            url: 'data:image/svg+xml,' + encodeURIComponent(svgMarker),
+            scaledSize: new google.maps.Size(30, 30),
+            anchor: new google.maps.Point(15, 15),
+          },
         });
-
-        L.marker(coords, { icon }).addTo(dayLG).bindPopup(`
+        const infoWindow = new google.maps.InfoWindow({ content: `
           <div style="min-width:150px;font-family:sans-serif;line-height:1.5;">
             <div style="font-weight:700;font-size:14px;">${item.name}</div>
             ${item.time ? `<div style="font-size:12px;color:#666;">🕐 ${item.time}</div>` : ''}
@@ -1312,93 +1410,283 @@
             ${item.cost_jpy ? `<div style="font-size:12px;color:#C0392B;font-weight:600;">¥${item.cost_jpy.toLocaleString()}</div>` : ''}
             ${item.notes ? `<div style="font-size:11px;color:#888;margin-top:2px;">${item.notes}</div>` : ''}
             ${item.maps_url ? `<a href="${item.maps_url}" target="_blank" style="font-size:12px;color:#1565C0;display:block;margin-top:4px;">📍 Google Maps</a>` : ''}
-          </div>
-        `);
+          </div>` });
+        marker.addListener('click', () => infoWindow.open(mapInstance, marker));
+        overlays.push(marker);
       }
 
       if (dayItemsWC.length > 1) {
-        const dayCoords = dayItemsWC.map(x => x.coords);
-        L.polyline(dayCoords, { color, weight: 3.5, opacity: .8, dashArray: '7 5' }).addTo(dayLG);
-
         for (let i = 0; i < dayItemsWC.length - 1; i++) {
           const c1 = dayItemsWC[i].coords;
           const c2 = dayItemsWC[i + 1].coords;
-          const route = await getRouteInfo(c1, c2);
-          if (route) {
-            const { metro, walk } = estimateTransit(route.distance);
-            const mid = [(c1[0] + c2[0]) / 2, (c1[1] + c2[1]) / 2];
-            const isWalkable = walk <= 12;
-            const labelHtml = isWalkable
-              ? `<div class="transit-label transit-label-walk">🚶 ${walk}分</div>`
-              : `<div class="transit-label">🚇 約${metro}分</div>`;
-            L.marker(mid, {
-              icon: L.divIcon({ className: '', html: labelHtml, iconSize: [100, 24], iconAnchor: [50, 12] }),
-              interactive: false,
-            }).addTo(dayLG);
+          const fromItem = dayItemsWC[i].item;
+          const toItem   = dayItemsWC[i + 1].item;
+          const mid = { lat: (c1[0] + c2[0]) / 2, lng: (c1[1] + c2[1]) / 2 };
+          const key = transitKey(c1, c2);
+
+          const info = await getTransitTime(c1, c2);
+          // isTransit=false means API failed → haversine estimate; only treat as walkable if short
+          const isWalkable = info.isTransit ? info.minutes <= 12 : info.minutes <= 25;
+
+          let segPath = _routeResultCache[key];
+          if (!segPath) segPath = await fetchRouteForMap(c1, c2);
+          if (!segPath || segPath.length < 2)
+            segPath = [new google.maps.LatLng(c1[0], c1[1]), new google.maps.LatLng(c2[0], c2[1])];
+
+          if (isWalkable) {
+            // Walking: green dashed line
+            overlays.push(new google.maps.Polyline({
+              path: segPath,
+              map: mapInstance,
+              strokeColor: '#43A047',
+              strokeWeight: 3,
+              strokeOpacity: 0,
+              icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.8, strokeColor: '#43A047', scale: 3 }, offset: '0', repeat: '10px' }],
+            }));
+          } else {
+            // Transit: solid line in day color
+            overlays.push(new google.maps.Polyline({
+              path: segPath,
+              map: mapInstance,
+              strokeColor: color,
+              strokeWeight: 5,
+              strokeOpacity: 0.9,
+            }));
           }
+
+          const labelText = isWalkable ? `🚶 ${info.minutes}分` : `🚇 ${info.minutes}分`;
+          const bgColor   = isWalkable ? 'rgba(46,125,50,0.9)' : 'rgba(21,101,192,0.9)';
+
+          const svgLabel = `<svg xmlns="http://www.w3.org/2000/svg" width="90" height="24"><rect x="0" y="0" rx="12" ry="12" width="90" height="24" fill="${bgColor}"/><text x="45" y="16" text-anchor="middle" font-size="11" font-weight="bold" fill="white">${labelText}</text></svg>`;
+          const labelMarker = new google.maps.Marker({
+            position: mid,
+            map: mapInstance,
+            icon: {
+              url: 'data:image/svg+xml,' + encodeURIComponent(svgLabel),
+              scaledSize: new google.maps.Size(90, 24),
+              anchor: new google.maps.Point(45, 12),
+            },
+            clickable: !isWalkable,
+          });
+          if (!isWalkable) {
+            labelMarker.addListener('click', () => openTransitSheet(c1, fromItem.name, c2, toItem.name, fromItem.date, fromItem.time));
+          }
+          overlays.push(labelMarker);
         }
       }
 
       if (dayItemsWC.length) {
-        dayLayerGroups.push(dayLG);
-        dayCoordsList.push(dayItemsWC.map(x => x.coords));
+        dayOverlayGroups.push(overlays);
+        dayLatLngsList.push(dayItemsWC.map(x => new google.maps.LatLng(x.coords[0], x.coords[1])));
         dayMeta.push({ color, label: fmtDate(date) });
-      } else {
-        dayLG.remove();
+        _mapOverlays.push(...overlays);
       }
     }
 
-    if (allCoords.length) {
-      mapInstance.fitBounds(L.latLngBounds(allCoords), { padding: [50, 50] });
+    if (allLatLngs.length) {
+      const bounds = new google.maps.LatLngBounds();
+      allLatLngs.forEach(ll => bounds.extend(ll));
+      mapInstance.fitBounds(bounds, { padding: 50 });
     } else {
-      mapInstance.setView([33.5902, 130.4017], 12);
+      mapInstance.setCenter({ lat: 33.59, lng: 130.40 });
+      mapInstance.setZoom(12);
       container.insertAdjacentHTML('beforeend',
         '<div style="position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#fff;padding:8px 14px;border-radius:20px;font-size:12px;color:#888;z-index:999;box-shadow:0 2px 8px rgba(0,0,0,.15);">找不到景點座標，請填入 Google Maps 連結</div>'
       );
     }
 
-    // ── 日期篩選列 ──────────────────────────────────────────────────────────
     if (dayMeta.length > 1) {
-      const chipsHTML =
-        `<button class="day-chip active" data-index="-1" style="background:#444;color:#fff;">全部</button>` +
-        dayMeta.map((m, i) =>
-          `<button class="day-chip" data-index="${i}" style="color:${m.color};">
-            <span style="width:8px;height:8px;border-radius:50%;background:${m.color};display:inline-block;flex-shrink:0;"></span>
-            ${m.label}
-          </button>`
-        ).join('');
+      const chipsHTML = `<button class="day-chip" data-index="-1" style="color:#444;">全部</button>` +
+        dayMeta.map((m, i) => `<button class="day-chip" data-index="${i}" style="color:${m.color};"><span style="width:8px;height:8px;border-radius:50%;background:${m.color};display:inline-block;flex-shrink:0;"></span>${m.label}</button>`).join('');
       container.insertAdjacentHTML('beforeend', `<div class="day-filter-bar">${chipsHTML}</div>`);
 
-      container.querySelectorAll('.day-chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-          const idx = parseInt(chip.dataset.index);
-          // 更新 chip 樣式
-          container.querySelectorAll('.day-chip').forEach(c => {
-            const ci = parseInt(c.dataset.index);
-            c.classList.remove('active');
-            c.style.background = '';
-            c.style.color = ci === -1 ? '#444' : dayMeta[ci].color;
-          });
-          chip.classList.add('active');
-          chip.style.background = idx === -1 ? '#444' : dayMeta[idx].color;
-          chip.style.color = '#fff';
-          // 顯示 / 隱藏圖層
-          dayLayerGroups.forEach((lg, i) => {
-            if (idx === -1 || i === idx) lg.addTo(mapInstance);
-            else lg.remove();
-          });
-          // 縮放至對應範圍
-          const coords = idx === -1 ? allCoords : dayCoordsList[idx];
-          if (coords && coords.length) {
-            mapInstance.fitBounds(L.latLngBounds(coords), { padding: [50, 50] });
-          }
+      function selectDay(idx) {
+        container.querySelectorAll('.day-chip').forEach(c => {
+          const ci = parseInt(c.dataset.index);
+          c.classList.remove('active'); c.style.background = ''; c.style.color = ci === -1 ? '#444' : dayMeta[ci]?.color;
         });
+        const active = container.querySelector(`.day-chip[data-index="${idx}"]`);
+        if (active) { active.classList.add('active'); active.style.background = idx === -1 ? '#444' : dayMeta[idx].color; active.style.color = '#fff'; }
+        dayOverlayGroups.forEach((ovs, i) => { const show = idx === -1 || i === idx; ovs.forEach(o => { if (o.setMap) o.setMap(show ? mapInstance : null); }); });
+        const lls = idx === -1 ? allLatLngs : dayLatLngsList[idx];
+        if (lls.length) { const b = new google.maps.LatLngBounds(); lls.forEach(ll => b.extend(ll)); mapInstance.fitBounds(b, { padding: 50 }); }
+      }
+
+      container.querySelectorAll('.day-chip').forEach(chip => {
+        chip.addEventListener('click', () => selectDay(parseInt(chip.dataset.index)));
       });
+
+      // Default: show first day only
+      selectDay(0);
     } else if (dayMeta.length === 1) {
       container.insertAdjacentHTML('beforeend',
         `<div class="map-legend"><div class="legend-row"><div class="legend-dot" style="background:${dayMeta[0].color}"></div><span>${dayMeta[0].label}</span></div></div>`
       );
     }
+
+    _mapLoading = false;
+  }
+
+  /* ── TRANSIT SHEET ─────────────────────────────────────────────────── */
+  function closeTransitSheet() {
+    document.getElementById('transit-overlay').classList.remove('open');
+  }
+
+  function parseRoutesAPISteps(legs) {
+    const steps = [];
+    let firstDep = '', lastArr = '';
+    for (const step of (legs?.[0]?.steps || [])) {
+      if (step.travelMode === 'TRANSIT') {
+        const td = step.transitDetails || {};
+        const line = td.transitLine || {};
+        const stop = td.stopDetails || {};
+        const depText = td.localizedValues?.departureTime?.time?.text || '';
+        const arrText = td.localizedValues?.arrivalTime?.time?.text || '';
+        if (!firstDep) firstDep = depText;
+        lastArr = arrText;
+        steps.push({
+          mode: 'TRANSIT',
+          line: line.name || '',
+          short_name: line.nameShort || '',
+          headsign: td.headsign || '',
+          departure_stop: stop.departureStop?.name || '',
+          arrival_stop: stop.arrivalStop?.name || '',
+          departure_time: depText,
+          arrival_time: arrText,
+          num_stops: td.stopCount || 0,
+          vehicle: line.vehicle?.type || '',
+          color: line.color || '',
+          text_color: line.textColor || '',
+        });
+      } else if (step.travelMode === 'WALK') {
+        steps.push({
+          mode: 'WALKING',
+          duration: step.localizedValues?.duration?.text || '',
+          distance: step.localizedValues?.distance?.text || '',
+        });
+      }
+    }
+    return { steps, firstDep, lastArr };
+  }
+
+  async function openTransitSheet(fromCoords, fromLabel, toCoords, toLabel, date, time) {
+    document.getElementById('transit-subtitle').textContent = `${fromLabel} → ${toLabel}`;
+    document.getElementById('transit-routes').innerHTML = '<div class="spinner"></div>';
+    document.getElementById('transit-overlay').classList.add('open');
+    try {
+      const fiveDaysMs = 5 * 24 * 60 * 60 * 1000;
+      const tripDate = date ? new Date(date + 'T00:00:00') : null;
+      const useActual = tripDate && tripDate > new Date() && (tripDate - new Date()) < fiveDaysMs;
+      let baseTime;
+      if (useActual && time) {
+        baseTime = new Date(`${date}T${time}:00+09:00`);
+      } else {
+        baseTime = tomorrow9amDate();
+      }
+
+      const routes = [];
+      const seen = new Set();
+
+      // Routes API: 3 calls × alternatives=true (up to 3 each) = up to 9 options
+      for (let attempt = 0; attempt < 3 && routes.length < 5; attempt++) {
+        const depTime = new Date(baseTime.getTime() + attempt * 20 * 60 * 1000);
+        const apiRoutes = await callRoutesAPI(fromCoords, toCoords, {
+          mode: 'TRANSIT', alternatives: true, departureTime: depTime,
+          fieldMask: 'routes.duration,routes.legs,routes.travelAdvisory.transitFare',
+        });
+        if (!apiRoutes) break;
+
+        for (const apiRoute of apiRoutes) {
+          const { steps, firstDep, lastArr } = parseRoutesAPISteps(apiRoute.legs);
+          if (!steps.some(s => s.mode === 'TRANSIT')) continue;
+          if (seen.has(firstDep)) continue;
+          seen.add(firstDep);
+
+          const durSec = parseInt(apiRoute.duration) || 0;
+          const durText = apiRoute.legs?.[0]?.localizedValues?.duration?.text
+            || (durSec ? `${Math.round(durSec / 60)} 分鐘` : '');
+
+          let fareText = '';
+          const tf = apiRoute.travelAdvisory?.transitFare;
+          if (tf) fareText = `${tf.currencyCode} ${tf.units || ''}`;
+
+          routes.push({ departure: firstDep, arrival: lastArr, duration: durText, fare: fareText, steps });
+          if (routes.length >= 5) break;
+        }
+      }
+      renderTransitRoutes(routes, routes.length === 0 ? 'ZERO_RESULTS' : '', fromCoords, toCoords);
+    } catch(e) {
+      document.getElementById('transit-routes').innerHTML = `<div class="transit-error">查詢失敗：${e.message}</div>`;
+    }
+  }
+
+  function vehicleEmoji(type) {
+    const map = {
+      SUBWAY: '🚇', RAIL: '🚃', BUS: '🚌', TRAM: '🚃',
+      FERRY: '⛴️', HEAVY_RAIL: '🚃', COMMUTER_TRAIN: '🚃',
+      HIGH_SPEED_TRAIN: '🚅', INTERCITY_BUS: '🚌',
+    };
+    return map[type] || '🚌';
+  }
+
+  function renderTransitRoutes(routes, apiError, fromCoords, toCoords) {
+    const el = document.getElementById('transit-routes');
+    if (!routes || !routes.length) {
+      const gmLink = (fromCoords && toCoords)
+        ? `https://www.google.com/maps/dir/?api=1&origin=${fromCoords[0]},${fromCoords[1]}&destination=${toCoords[0]},${toCoords[1]}&travelmode=transit`
+        : null;
+      const linkHtml = gmLink
+        ? `<br><a href="${gmLink}" target="_blank" style="color:var(--primary);text-decoration:none;font-size:13px;">在 Google Maps 開啟路線 →</a>`
+        : '';
+      el.innerHTML = `<div class="transit-empty">此路段查無大眾運輸班次${linkHtml}</div>`;
+      return;
+    }
+    el.innerHTML = routes.map(r => {
+      const timeLine = (r.departure || r.arrival)
+        ? `<div class="transit-times">${r.departure} → ${r.arrival}</div>`
+        : '';
+      const fareLine = r.fare ? `<div class="transit-fare">${r.fare}</div>` : '';
+
+      const stepsHtml = r.steps.length === 0
+        ? '<div style="font-size:12px;color:var(--muted);padding:6px 0;">（無詳細班次資料）</div>'
+        : r.steps.map(s => {
+            if (s.mode === 'WALKING') {
+              return `<div class="transit-step">
+                <div class="transit-step-icon" style="background:#888;">🚶</div>
+                <div class="transit-step-info">
+                  <div class="transit-step-line">步行</div>
+                  <div style="font-size:12px;color:var(--muted);">${s.distance || ''} ${s.duration || ''}</div>
+                </div>
+              </div>`;
+            }
+            const iconStyle = s.color ? `style="background:${s.color};color:${s.text_color || '#fff'}"` : '';
+            const headsign  = s.headsign ? `<div class="transit-step-headsign">往 ${s.headsign}</div>` : '';
+            const stops     = s.num_stops ? `<div class="transit-step-stops">${s.num_stops} 站</div>` : '';
+            return `<div class="transit-step">
+              <div class="transit-step-icon" ${iconStyle}>${vehicleEmoji(s.vehicle)}</div>
+              <div class="transit-step-info">
+                <div class="transit-step-line">${s.short_name || s.line}</div>
+                ${headsign}
+                <div style="font-size:12px;color:var(--text);margin-top:2px;">
+                  <span style="font-weight:600;">${s.departure_stop}</span>
+                  <span style="color:var(--muted);"> ${s.departure_time}</span>
+                  &rarr;
+                  <span style="font-weight:600;">${s.arrival_stop}</span>
+                  <span style="color:var(--muted);"> ${s.arrival_time}</span>
+                </div>
+                ${stops}
+              </div>
+            </div>`;
+          }).join('');
+
+      return `<div class="transit-route-card">
+        <div class="transit-route-header">
+          <div class="transit-time-block">${timeLine}${fareLine}</div>
+          <div class="transit-duration-badge">${r.duration}</div>
+        </div>
+        <div>${stepsHtml}</div>
+      </div>`;
+    }).join('');
   }
 
   /* ── NAV & VIEW SWITCHING ───────────────────────────────────────────── */
@@ -1459,6 +1747,7 @@
   document.getElementById('transit-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('transit-overlay')) closeTransitSheet();
   });
+  document.getElementById('transit-close-btn').addEventListener('click', closeTransitSheet);
 
   /* ── INIT ───────────────────────────────────────────────────────────── */
   (async () => {
