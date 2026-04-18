@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>旅遊計畫</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://unpkg.com/sortablejs@1.15.2/Sortable.min.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -72,31 +73,30 @@
 </nav>
 
 <!-- ── ITINERARY MODAL ──────────────────────────────────────────────────── -->
-<div id="modal-overlay">
-  <div id="modal">
-    <div class="modal-handle"></div>
-    <div class="modal-header">
-      <span class="modal-title" id="modal-title">新增行程</span>
-      <button class="modal-close" id="modal-close-btn">✕</button>
-    </div>
-    <div class="modal-body">
+<div class="offcanvas offcanvas-bottom" id="modal" tabindex="-1" style="border-radius:22px 22px 0 0;max-height:92vh;">
+  <div class="modal-handle"></div>
+  <div class="offcanvas-header border-bottom pb-3">
+    <span class="fw-bold fs-6" id="modal-title">新增行程</span>
+    <button type="button" class="btn-close" id="modal-close-btn" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body">
       <input type="hidden" id="edit-item-id" />
-      <div class="form-group">
-        <label class="form-label">景點名稱 *</label>
-        <input class="form-input" id="f-name" type="text" placeholder="例：淺草寺" />
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">景點名稱 *</label>
+        <input class="form-control" id="f-name" type="text" placeholder="🔍 搜尋景點名稱..." autocomplete="off" />
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">日期</label>
-          <input class="form-input" id="f-date" type="date" />
+      <div class="row g-2">
+        <div class="col mb-3">
+          <label class="form-label small fw-semibold">日期</label>
+          <input class="form-control" id="f-date" type="date" />
         </div>
-        <div class="form-group">
-          <label class="form-label">時間</label>
-          <input class="form-input" id="f-time" type="text" placeholder="09:00" />
+        <div class="col mb-3">
+          <label class="form-label small fw-semibold">時間</label>
+          <input class="form-control" id="f-time" type="text" placeholder="09:00" />
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">類型</label>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">類型</label>
         <select class="form-select" id="f-type">
           <option value="">— 選擇 —</option>
           <option>🏛️ 景點</option>
@@ -106,111 +106,108 @@
           <option>🛍️ 購物</option>
         </select>
       </div>
-      <div class="form-group">
-        <label class="form-label">地址</label>
-        <input class="form-input" id="f-address" type="text" placeholder="地址" />
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">地址</label>
+        <input class="form-control" id="f-address" type="text" placeholder="地址" />
       </div>
-      <div class="form-group">
-        <label class="form-label">Google Maps 連結</label>
-        <input class="form-input" id="f-maps" type="url" placeholder="https://maps.google.com/..." />
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">Google Maps 連結</label>
+        <input class="form-control" id="f-maps" type="url" placeholder="https://maps.google.com/..." />
       </div>
-      <div class="form-group">
-        <label class="form-label">預估費用（JPY）</label>
-        <input class="form-input" id="f-cost" type="number" placeholder="0" />
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">預估費用（JPY）</label>
+        <input class="form-control" id="f-cost" type="number" placeholder="0" />
       </div>
-      <div class="form-group">
-        <label class="form-label">備註</label>
-        <textarea class="form-textarea" id="f-notes" placeholder="備註..."></textarea>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">備註</label>
+        <textarea class="form-control" id="f-notes" placeholder="備註..." rows="3"></textarea>
       </div>
-      <div class="form-group" id="f-done-row" style="display:none;">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
+      <div class="mb-3" id="f-done-row" style="display:none;">
+        <label class="d-flex align-items-center gap-2" style="cursor:pointer;font-size:14px;">
           <input type="checkbox" id="f-done" style="width:18px;height:18px;accent-color:var(--purple1);" />
           已完成
         </label>
       </div>
-      <div class="btn-row" id="modal-btn-row">
-        <button class="btn btn-primary" id="modal-save-btn">儲存</button>
+      <div class="modal-footer-row" id="modal-btn-row">
+        <button class="btn btn-danger" id="modal-save-btn">儲存</button>
       </div>
-    </div>
   </div>
 </div>
 
 <!-- ── TRIP MODAL ───────────────────────────────────────────────────────── -->
-<div id="trip-modal-overlay">
-  <div id="trip-modal">
-    <div class="modal-handle"></div>
-    <div class="modal-header">
-      <span class="modal-title" id="trip-modal-title">新增旅程</span>
-      <button class="modal-close" id="trip-modal-close">✕</button>
-    </div>
-    <div class="modal-body">
+<div class="offcanvas offcanvas-bottom" id="trip-modal" tabindex="-1" style="border-radius:22px 22px 0 0;max-height:85vh;">
+  <div class="modal-handle"></div>
+  <div class="offcanvas-header border-bottom pb-3">
+    <span class="fw-bold fs-6" id="trip-modal-title">新增旅程</span>
+    <button type="button" class="btn-close" id="trip-modal-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body">
       <input type="hidden" id="t-id" />
-      <div class="form-group">
-        <label class="form-label">旅程名稱 *</label>
-        <input class="form-input" id="t-name" type="text" placeholder="例：2025 東京之旅" />
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">旅程名稱 *</label>
+        <input class="form-control" id="t-name" type="text" placeholder="例：2025 東京之旅" />
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">出發日期</label>
-          <input class="form-input" id="t-start" type="date" />
+      <div class="row g-2">
+        <div class="col mb-3">
+          <label class="form-label small fw-semibold">出發日期</label>
+          <input class="form-control" id="t-start" type="date" />
         </div>
-        <div class="form-group">
-          <label class="form-label">回程日期</label>
-          <input class="form-input" id="t-end" type="date" />
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">人數</label>
-          <input class="form-input" id="t-people" type="number" placeholder="2" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">總預算（TWD）</label>
-          <input class="form-input" id="t-budget" type="number" placeholder="50000" />
+        <div class="col mb-3">
+          <label class="form-label small fw-semibold">回程日期</label>
+          <input class="form-control" id="t-end" type="date" />
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">狀態</label>
+      <div class="row g-2">
+        <div class="col mb-3">
+          <label class="form-label small fw-semibold">人數</label>
+          <input class="form-control" id="t-people" type="number" placeholder="2" />
+        </div>
+        <div class="col mb-3">
+          <label class="form-label small fw-semibold">總預算（TWD）</label>
+          <input class="form-control" id="t-budget" type="number" placeholder="50000" />
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">狀態</label>
         <select class="form-select" id="t-status">
           <option value="計畫中">計畫中</option>
           <option value="確認">確認</option>
           <option value="完成">完成</option>
         </select>
       </div>
-      <div class="btn-row" id="trip-btn-row">
-        <button class="btn btn-primary" id="trip-save-btn">建立旅程</button>
+      <div class="modal-footer-row" id="trip-btn-row">
+        <button class="btn btn-danger" id="trip-save-btn">建立旅程</button>
       </div>
     </div>
   </div>
 </div>
 
 <!-- ── EXPENSE MODAL ────────────────────────────────────────────────────── -->
-<div id="expense-modal-overlay">
-  <div id="expense-modal">
-    <div class="modal-handle"></div>
-    <div class="modal-header">
-      <span class="modal-title">新增費用</span>
-      <button class="modal-close" id="expense-modal-close">✕</button>
-    </div>
-    <div class="modal-body">
+<div class="offcanvas offcanvas-bottom" id="expense-modal" tabindex="-1" style="border-radius:22px 22px 0 0;max-height:85vh;">
+  <div class="modal-handle"></div>
+  <div class="offcanvas-header border-bottom pb-3">
+    <span class="fw-bold fs-6">新增費用</span>
+    <button type="button" class="btn-close" id="expense-modal-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body">
       <input type="hidden" id="e-id" />
-      <div class="form-group">
-        <label class="form-label">項目名稱 *</label>
-        <input class="form-input" id="e-name" type="text" placeholder="例：晚餐" />
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">項目名稱 *</label>
+        <input class="form-control" id="e-name" type="text" placeholder="例：晚餐" />
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">金額（JPY）</label>
-          <input class="form-input" id="e-amount" type="number" placeholder="0" />
+      <div class="row g-2">
+        <div class="col mb-3">
+          <label class="form-label small fw-semibold">金額（JPY）</label>
+          <input class="form-control" id="e-amount" type="number" placeholder="0" />
         </div>
-        <div class="form-group">
-          <label class="form-label">日期</label>
-          <input class="form-input" id="e-date" type="date" />
+        <div class="col mb-3">
+          <label class="form-label small fw-semibold">日期</label>
+          <input class="form-control" id="e-date" type="date" />
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">類別</label>
+      <div class="row g-2">
+        <div class="col mb-3">
+          <label class="form-label small fw-semibold">類別</label>
           <select class="form-select" id="e-category">
             <option value="">— 選擇 —</option>
             <option>🍽️ 餐飲</option>
@@ -222,45 +219,49 @@
             <option>📦 其他</option>
           </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">付款人</label>
-          <input class="form-input" id="e-payer" type="text" placeholder="姓名" />
+        <div class="col mb-3">
+          <label class="form-label small fw-semibold">付款人</label>
+          <input class="form-control" id="e-payer" type="text" placeholder="姓名" />
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">備註</label>
-        <textarea class="form-textarea" id="e-notes" placeholder="備註..." style="min-height:56px;"></textarea>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">備註</label>
+        <textarea class="form-control" id="e-notes" placeholder="備註..." rows="2"></textarea>
       </div>
-      <div class="btn-row" id="expense-btn-row">
-        <button class="btn btn-primary" id="expense-save-btn">儲存</button>
+      <div class="modal-footer-row" id="expense-btn-row">
+        <button class="btn btn-danger" id="expense-save-btn">儲存</button>
       </div>
     </div>
   </div>
 </div>
 
 <!-- ── TRANSIT SHEET ─────────────────────────────────────────────────────── -->
-<div id="transit-overlay">
-  <div id="transit-sheet">
-    <div class="modal-handle"></div>
-    <div class="modal-header">
+<div class="offcanvas offcanvas-bottom" id="transit-sheet" tabindex="-1" style="border-radius:22px 22px 0 0;height:auto;min-height:260px;max-height:78vh;">
+  <div class="modal-handle"></div>
+  <div class="offcanvas-header border-bottom pb-3">
       <div>
         <div class="transit-sheet-title">🚆 班次查詢</div>
         <div class="transit-sheet-subtitle" id="transit-subtitle"></div>
       </div>
-      <button class="modal-close" id="transit-close-btn">✕</button>
+    <button type="button" class="btn-close" id="transit-close-btn" data-bs-dismiss="offcanvas"></button>
     </div>
-    <div class="modal-body">
+    <div class="offcanvas-body">
       <div id="transit-routes"><div class="spinner"></div></div>
     </div>
-  </div>
 </div>
 
 <!-- ── TOAST ─────────────────────────────────────────────────────────────── -->
 <div id="toast"></div>
 
 <script>
-  const API = 'http://localhost:5000/api';
+  const API = '/api';
   let TWD_RATE = parseFloat(localStorage.getItem('twd_rate') || '0.21');
+
+  /* ── Bootstrap Offcanvas instances ─────────────────────────────────── */
+  const bsModal = () => bootstrap.Offcanvas.getOrCreateInstance(document.getElementById('modal'));
+  const bsTripModal = () => bootstrap.Offcanvas.getOrCreateInstance(document.getElementById('trip-modal'));
+  const bsExpenseModal = () => bootstrap.Offcanvas.getOrCreateInstance(document.getElementById('expense-modal'));
+  const bsTransitSheet = () => bootstrap.Offcanvas.getOrCreateInstance(document.getElementById('transit-sheet'));
 
   /* ── state ─────────────────────────────────────────────────────────── */
   let trips = [];
@@ -438,6 +439,9 @@
       const badge = idx != null ? `<span class="day-badge">第 ${idx} 日</span>` : '';
       const items = groups[date];
       const itemsHTML = items.map(item => renderItemCard(item)).join('');
+      const addBtn = date !== '（未設定日期）'
+        ? `<button class="day-add-btn" data-date="${date}">＋ 新增行程</button>`
+        : `<button class="day-add-btn" data-date="">＋ 新增行程</button>`;
       return `
         <div class="day-group" data-date="${date}">
           <div class="day-label">
@@ -448,6 +452,7 @@
             <span class="day-chevron">▼</span>
           </div>
           <div class="day-items">${itemsHTML}</div>
+          ${addBtn}
         </div>
       `;
     }).join('');
@@ -486,6 +491,14 @@
       span.addEventListener('click', e => {
         e.stopPropagation();
         openTimePopover(span.dataset.id, span);
+      });
+    });
+
+    // 每日新增按鈕
+    el.querySelectorAll('.day-add-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        openAddModal(btn.dataset.date || '');
       });
     });
 
@@ -734,15 +747,78 @@
     });
   }
 
+  /* ── Places Autocomplete ────────────────────────────────────────── */
+  let _nameAutocomplete = null;
+
+  function initPlacesAutocomplete() {
+    if (_nameAutocomplete || !window.google?.maps?.places) return;
+    const input = document.getElementById('f-name');
+    _nameAutocomplete = new google.maps.places.Autocomplete(input, {
+      language: 'zh-TW',
+      fields: ['name', 'formatted_address', 'place_id', 'types', 'geometry'],
+    });
+    // Prevent form submit on Enter
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+    _nameAutocomplete.addListener('place_changed', () => {
+      const place = _nameAutocomplete.getPlace();
+      if (!place.place_id) return;
+
+      // Fill name (clean display name)
+      input.value = place.name || input.value;
+
+      // Fill address
+      if (place.formatted_address) {
+        document.getElementById('f-address').value = place.formatted_address;
+      }
+
+      // Build Maps URL using place_id
+      document.getElementById('f-maps').value =
+        `https://www.google.com/maps/place/?q=place_id:${place.place_id}`;
+
+      // Auto-select type from Google place types
+      const types = place.types || [];
+      const typeMap = [
+        [['restaurant','food','cafe','bar','bakery'], '🍽️ 餐廳'],
+        [['lodging','hotel'], '🏨 住宿'],
+        [['store','shopping_mall','department_store'], '🛍️ 購物'],
+        [['subway_station','train_station','transit_station','bus_station','airport'], '🚉 交通'],
+      ];
+      let matched = '';
+      for (const [keys, label] of typeMap) {
+        if (keys.some(k => types.includes(k))) { matched = label; break; }
+      }
+      if (matched) {
+        const sel = document.getElementById('f-type');
+        for (const opt of sel.options) { if (opt.value === matched) { sel.value = matched; break; } }
+      } else {
+        document.getElementById('f-type').value = '🏛️ 景點';
+      }
+    });
+  }
+
   /* ── MODALS ─────────────────────────────────────────────────────────── */
 
   // Itinerary modal
-  function openAddModal() {
+  function nextDayTime(date) {
+    if (!date) return '';
+    const dayItems = itineraryData
+      .filter(i => i.date === date && i.time && /^\d{1,2}:\d{2}$/.test(i.time))
+      .sort((a, b) => a.time.localeCompare(b.time));
+    if (!dayItems.length) return '';
+    const last = dayItems[dayItems.length - 1].time;
+    const [h, m] = last.split(':').map(Number);
+    const next = new Date(2000, 0, 1, h + 1, m);
+    // cap at 23:59
+    if (next.getDate() > 1) return '23:59';
+    return `${String(next.getHours()).padStart(2,'0')}:${String(next.getMinutes()).padStart(2,'0')}`;
+  }
+
+  function openAddModal(presetDate) {
     document.getElementById('edit-item-id').value = '';
     document.getElementById('modal-title').textContent = '新增行程';
     document.getElementById('f-name').value = '';
-    document.getElementById('f-date').value = '';
-    document.getElementById('f-time').value = '';
+    document.getElementById('f-date').value = presetDate || '';
+    document.getElementById('f-time').value = nextDayTime(presetDate);
     document.getElementById('f-type').value = '';
     document.getElementById('f-address').value = '';
     document.getElementById('f-maps').value = '';
@@ -755,7 +831,9 @@
     btnRow.innerHTML = '<button class="btn btn-primary" id="modal-save-btn">儲存</button>';
     document.getElementById('modal-save-btn').onclick = saveItineraryItem;
 
-    document.getElementById('modal-overlay').classList.add('open');
+    bsModal().show();
+    // Init autocomplete after offcanvas renders (needs DOM visible)
+    setTimeout(initPlacesAutocomplete, 300);
   }
 
   function openEditModal(id) {
@@ -783,11 +861,11 @@
     document.getElementById('modal-save-btn').onclick = saveItineraryItem;
     document.getElementById('modal-delete-btn').onclick = () => deleteItineraryItem(id);
 
-    document.getElementById('modal-overlay').classList.add('open');
+    bsModal().show();
   }
 
   function closeModal() {
-    document.getElementById('modal-overlay').classList.remove('open');
+    bsModal().hide();
   }
 
   async function saveItineraryItem() {
@@ -849,7 +927,7 @@
     const btnRow = document.getElementById('trip-btn-row');
     btnRow.innerHTML = '<button class="btn btn-primary" id="trip-save-btn">建立旅程</button>';
     document.getElementById('trip-save-btn').addEventListener('click', saveTrip);
-    document.getElementById('trip-modal-overlay').classList.add('open');
+    bsTripModal().show();
   }
 
   function openEditTripModal(id) {
@@ -870,11 +948,11 @@
     `;
     document.getElementById('trip-save-btn').addEventListener('click', saveTrip);
     document.getElementById('trip-delete-modal-btn').addEventListener('click', () => deleteTripById(id));
-    document.getElementById('trip-modal-overlay').classList.add('open');
+    bsTripModal().show();
   }
 
   function closeTripModal() {
-    document.getElementById('trip-modal-overlay').classList.remove('open');
+    bsTripModal().hide();
   }
 
   async function saveTrip() {
@@ -931,7 +1009,7 @@
     const btnRow = document.getElementById('expense-btn-row');
     btnRow.innerHTML = '<button class="btn btn-primary" id="expense-save-btn">儲存</button>';
     document.getElementById('expense-save-btn').addEventListener('click', saveExpense);
-    document.getElementById('expense-modal-overlay').classList.add('open');
+    bsExpenseModal().show();
   }
 
   function openEditExpenseModal(id) {
@@ -952,11 +1030,11 @@
     `;
     document.getElementById('expense-save-btn').addEventListener('click', saveExpense);
     document.getElementById('expense-delete-btn').addEventListener('click', () => deleteExpense(id));
-    document.getElementById('expense-modal-overlay').classList.add('open');
+    bsExpenseModal().show();
   }
 
   function closeExpenseModal() {
-    document.getElementById('expense-modal-overlay').classList.remove('open');
+    bsExpenseModal().hide();
   }
 
   async function saveExpense() {
@@ -1196,7 +1274,7 @@
     _googleMapsLoadPromise = new Promise(resolve => {
       window.__gmapsReady = () => { _googleMapsLoaded = true; resolve(); };
       const s = document.createElement('script');
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=__gmapsReady&language=zh-TW`;
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&callback=__gmapsReady&language=zh-TW`;
       document.head.appendChild(s);
     });
     return _googleMapsLoadPromise;
@@ -1374,6 +1452,7 @@
     const dayOverlayGroups = [];
     const dayLatLngsList = [];
     const dayMeta = [];
+    const allPlaceMarkers = [];  // { item, coords, marker, infoWindow, dayIndex, cardId, color }
 
     for (let di = 0; di < dates.length; di++) {
       const date = dates[di];
@@ -1411,8 +1490,19 @@
             ${item.notes ? `<div style="font-size:11px;color:#888;margin-top:2px;">${item.notes}</div>` : ''}
             ${item.maps_url ? `<a href="${item.maps_url}" target="_blank" style="font-size:12px;color:#1565C0;display:block;margin-top:4px;">📍 Google Maps</a>` : ''}
           </div>` });
-        marker.addListener('click', () => infoWindow.open(mapInstance, marker));
+        const cardId = `mc-${item.id}`;
+        marker.addListener('click', () => {
+          infoWindow.open(mapInstance, marker);
+          // sync bottom strip
+          const card = document.getElementById(cardId);
+          if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            document.querySelectorAll('.map-spot-card').forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+          }
+        });
         overlays.push(marker);
+        allPlaceMarkers.push({ item, coords, marker, infoWindow, dayIndex: di, cardId, color });
       }
 
       if (dayItemsWC.length > 1) {
@@ -1510,6 +1600,12 @@
         dayOverlayGroups.forEach((ovs, i) => { const show = idx === -1 || i === idx; ovs.forEach(o => { if (o.setMap) o.setMap(show ? mapInstance : null); }); });
         const lls = idx === -1 ? allLatLngs : dayLatLngsList[idx];
         if (lls.length) { const b = new google.maps.LatLngBounds(); lls.forEach(ll => b.extend(ll)); mapInstance.fitBounds(b, { padding: 50 }); }
+        // sync bottom strip visibility
+        container.querySelectorAll('.map-spot-card').forEach(c => {
+          const di = parseInt(c.dataset.dayIndex);
+          c.style.display = (idx === -1 || di === idx) ? '' : 'none';
+        });
+        container.querySelectorAll('.map-spot-card').forEach(c => c.classList.remove('active'));
       }
 
       container.querySelectorAll('.day-chip').forEach(chip => {
@@ -1524,12 +1620,37 @@
       );
     }
 
+    // ── Bottom spot card strip ──────────────────────────────────────
+    if (allPlaceMarkers.length) {
+      const stripHTML = allPlaceMarkers.map(({ item, dayIndex, cardId, color }) => {
+        const seq = dayIndex + 1;
+        const badge = `<span style="width:20px;height:20px;border-radius:50%;background:${color};color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">${seq}</span>`;
+        return `<div class="map-spot-card" id="${cardId}" data-day-index="${dayIndex}">
+          ${badge}
+          <div class="map-spot-card-body">
+            <div class="map-spot-card-name">${item.name}</div>
+            <div class="map-spot-card-meta">${item.time ? item.time + ' · ' : ''}${item.type || ''}</div>
+          </div>
+        </div>`;
+      }).join('');
+      container.insertAdjacentHTML('beforeend', `<div class="map-spot-strip" id="map-spot-strip">${stripHTML}</div>`);
+
+      allPlaceMarkers.forEach(({ marker, infoWindow, cardId }) => {
+        document.getElementById(cardId)?.addEventListener('click', () => {
+          mapInstance.panTo(marker.getPosition());
+          infoWindow.open(mapInstance, marker);
+          document.querySelectorAll('.map-spot-card').forEach(c => c.classList.remove('active'));
+          document.getElementById(cardId)?.classList.add('active');
+        });
+      });
+    }
+
     _mapLoading = false;
   }
 
   /* ── TRANSIT SHEET ─────────────────────────────────────────────────── */
   function closeTransitSheet() {
-    document.getElementById('transit-overlay').classList.remove('open');
+    bsTransitSheet().hide();
   }
 
   function parseRoutesAPISteps(legs) {
@@ -1572,7 +1693,7 @@
   async function openTransitSheet(fromCoords, fromLabel, toCoords, toLabel, date, time) {
     document.getElementById('transit-subtitle').textContent = `${fromLabel} → ${toLabel}`;
     document.getElementById('transit-routes').innerHTML = '<div class="spinner"></div>';
-    document.getElementById('transit-overlay').classList.add('open');
+    bsTransitSheet().show();
     try {
       const fiveDaysMs = 5 * 24 * 60 * 60 * 1000;
       const tripDate = date ? new Date(date + 'T00:00:00') : null;
@@ -1735,25 +1856,23 @@
   document.getElementById('expense-save-btn').addEventListener('click', saveExpense);
 
   // Close modals on overlay click
-  document.getElementById('modal-overlay').addEventListener('click', e => {
-    if (e.target === document.getElementById('modal-overlay')) closeModal();
-  });
-  document.getElementById('trip-modal-overlay').addEventListener('click', e => {
-    if (e.target === document.getElementById('trip-modal-overlay')) closeTripModal();
-  });
-  document.getElementById('expense-modal-overlay').addEventListener('click', e => {
-    if (e.target === document.getElementById('expense-modal-overlay')) closeExpenseModal();
-  });
-  document.getElementById('transit-overlay').addEventListener('click', e => {
-    if (e.target === document.getElementById('transit-overlay')) closeTransitSheet();
-  });
+  // Bootstrap Offcanvas handles backdrop click automatically
   document.getElementById('transit-close-btn').addEventListener('click', closeTransitSheet);
 
   /* ── INIT ───────────────────────────────────────────────────────────── */
   (async () => {
     await loadTrips();
     await loadItinerary();
+    // Pre-load Maps API (with places library) so autocomplete is ready on first add
+    try {
+      const cfg = await apiFetch('/config');
+      if (cfg.maps_key) {
+        _mapsApiKey = cfg.maps_key;
+        await loadGoogleMapsAPI(cfg.maps_key);
+      }
+    } catch(e) {}
   })();
 </script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
